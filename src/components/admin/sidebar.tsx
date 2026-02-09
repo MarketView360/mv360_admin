@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -12,11 +15,11 @@ import {
   Users,
   DatabaseZap,
   LogOut,
-  Shield,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const navItems = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
@@ -31,12 +34,31 @@ const navItems = [
 export function AdminSidebar() {
   const pathname = usePathname();
   const { user, signOut } = useAuth();
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  const logoSrc = mounted && resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg";
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-border bg-card">
-      <div className="flex items-center gap-2 px-6 py-5">
-        <Shield className="h-6 w-6 text-primary" />
-        <span className="text-lg font-bold">MV360 Admin</span>
+      <div className="flex items-center justify-between px-4 py-4">
+        <Link href="/overview" className="flex items-center gap-2">
+          <Image
+            src={logoSrc}
+            alt="MarketView360"
+            width={160}
+            height={24}
+            priority
+          />
+        </Link>
+        <ThemeToggle />
+      </div>
+      <div className="px-4 pb-2">
+        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+          Admin
+        </span>
       </div>
       <Separator />
       <nav className="flex-1 space-y-1 px-3 py-4">

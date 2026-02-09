@@ -200,7 +200,7 @@ export default function UsersPage() {
                         <TableCell>
                           <Badge
                             variant="outline"
-                            className="bg-emerald-600/10 text-emerald-400 border-emerald-600/20"
+                            className="bg-emerald-600/10 text-emerald-700 dark:text-emerald-400 border-emerald-600/20"
                           >
                             Active
                           </Badge>

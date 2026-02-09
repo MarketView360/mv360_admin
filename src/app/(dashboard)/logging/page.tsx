@@ -54,12 +54,12 @@ interface SecurityEvent {
 
 function LogLevelBadge({ status }: { status: string }) {
   if (status === "completed" || status === "success") {
-    return <Badge className="bg-emerald-600/20 text-emerald-400 border-0">INFO</Badge>;
+    return <Badge className="bg-emerald-600/20 text-emerald-700 dark:text-emerald-400 border-0">INFO</Badge>;
   }
   if (status === "failed" || status === "error") {
-    return <Badge className="bg-red-600/20 text-red-400 border-0">ERROR</Badge>;
+    return <Badge className="bg-red-600/20 text-red-700 dark:text-red-400 border-0">ERROR</Badge>;
   }
-  return <Badge className="bg-yellow-600/20 text-yellow-400 border-0">WARN</Badge>;
+  return <Badge className="bg-yellow-600/20 text-yellow-700 dark:text-yellow-400 border-0">WARN</Badge>;
 }
 
 export default function LoggingPage() {

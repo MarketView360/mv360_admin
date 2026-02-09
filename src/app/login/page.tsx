@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { useTheme } from "next-themes";
 import { useAuth } from "@/lib/auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -9,7 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { Shield, Loader2, Mail, CheckCircle2, KeyRound } from "lucide-react";
+import { Loader2, Mail, CheckCircle2, KeyRound } from "lucide-react";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -22,6 +25,12 @@ export default function LoginPage() {
   const [magicSent, setMagicSent] = useState(false);
   const { signIn, signInWithGoogle, signInWithMagicLink } = useAuth();
   const router = useRouter();
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  const logoSrc = mounted && resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg";
 
   const isDisabled = loading || googleLoading || magicLoading;
 
@@ -61,13 +70,26 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-            <Shield className="h-6 w-6 text-primary" />
+          <div className="mx-auto mb-3">
+            <Image
+              src={logoSrc}
+              alt="MarketView360"
+              width={200}
+              height={30}
+              priority
+            />
           </div>
-          <CardTitle className="text-2xl">MV360 Admin</CardTitle>
-          <CardDescription>Sign in with your admin credentials</CardDescription>
+          <div className="inline-flex items-center justify-center">
+            <span className="rounded-md bg-primary/10 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-primary">
+              Admin Dashboard
+            </span>
+          </div>
+          <CardDescription className="mt-2">Sign in with your admin credentials</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Google OAuth */}
