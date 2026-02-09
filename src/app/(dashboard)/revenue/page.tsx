@@ -42,12 +42,7 @@ interface RevenueData {
   revenueByMonth: { month: string; revenue: number }[];
 }
 
-const PLAN_COLORS = [
-  "hsl(var(--chart-1))",
-  "hsl(var(--chart-2))",
-  "hsl(var(--chart-3))",
-  "hsl(var(--chart-4))",
-];
+const PLAN_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ec4899"];
 
 // Placeholder plan distribution — replace with real data when subscriptions table exists
 const planDistribution = [
@@ -199,6 +194,13 @@ export default function RevenuePage() {
               {data?.revenueByMonth && data.revenueByMonth.length > 0 ? (
                 <ResponsiveContainer width="100%" height={300}>
                   <AreaChart data={data.revenueByMonth}>
+                    <defs>
+                      <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
+                        <stop offset="50%" stopColor="#8b5cf6" stopOpacity={0.15} />
+                        <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid
                       strokeDasharray="3 3"
                       stroke="hsl(var(--border))"
@@ -223,15 +225,16 @@ export default function RevenuePage() {
                         border: "1px solid hsl(var(--border))",
                         borderRadius: 8,
                         fontSize: 12,
+                        color: "hsl(var(--foreground))",
                       }}
                       formatter={(value) => [`$${value}`, "Revenue"]}
                     />
                     <Area
                       type="monotone"
                       dataKey="revenue"
-                      stroke="hsl(var(--chart-1))"
-                      fill="hsl(var(--chart-1))"
-                      fillOpacity={0.2}
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      fill="url(#revenueGradient)"
                     />
                   </AreaChart>
                 </ResponsiveContainer>

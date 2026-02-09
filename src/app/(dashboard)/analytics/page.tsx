@@ -158,6 +158,12 @@ export default function AnalyticsPage() {
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={dailyData}>
+                    <defs>
+                      <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#6366f1" stopOpacity={1} />
+                        <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.8} />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis
                       dataKey="date"
@@ -174,9 +180,10 @@ export default function AnalyticsPage() {
                         border: "1px solid hsl(var(--border))",
                         borderRadius: 8,
                         fontSize: 12,
+                        color: "hsl(var(--foreground))",
                       }}
                     />
-                    <Bar dataKey="count" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="count" fill="url(#barGradient)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -200,6 +207,12 @@ export default function AnalyticsPage() {
               ) : (
                 <ResponsiveContainer width="100%" height={300}>
                   <AreaChart data={cumulativeData}>
+                    <defs>
+                      <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                     <XAxis
                       dataKey="date"
@@ -216,14 +229,15 @@ export default function AnalyticsPage() {
                         border: "1px solid hsl(var(--border))",
                         borderRadius: 8,
                         fontSize: 12,
+                        color: "hsl(var(--foreground))",
                       }}
                     />
                     <Area
                       type="monotone"
                       dataKey="total"
-                      stroke="hsl(var(--chart-2))"
-                      fill="hsl(var(--chart-2))"
-                      fillOpacity={0.2}
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      fill="url(#areaGradient)"
                     />
                   </AreaChart>
                 </ResponsiveContainer>
