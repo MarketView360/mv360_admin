@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useMemo, useCallback, ReactNode } from "react";
-import { supabase, getSiteUrl } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import type { User, Session } from "@supabase/supabase-js";
 
 interface AuthContextType {
@@ -10,8 +10,6 @@ interface AuthContextType {
   isAdmin: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
-  signInWithGoogle: () => Promise<{ error: string | null }>;
-  signInWithMagicLink: (email: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
 }
 
@@ -21,8 +19,6 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   loading: true,
   signIn: async () => ({ error: null }),
-  signInWithGoogle: async () => ({ error: null }),
-  signInWithMagicLink: async () => ({ error: null }),
   signOut: async () => {},
 });
 
@@ -30,10 +26,19 @@ export function useAuth() {
   return useContext(AuthContext);
 }
 
+const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
 function checkIsAdmin(user: User | null): boolean {
   if (!user) return false;
+  // Check app_metadata (set via Supabase service role)
   const meta = user.app_metadata;
-  return meta?.role === "admin" || meta?.roles?.includes("admin");
+  if (meta?.role === "admin" || meta?.roles?.includes("admin")) return true;
+  // Fallback: check against allowed admin emails from env var
+  if (user.email && ADMIN_EMAILS.includes(user.email.toLowerCase())) return true;
+  return false;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -65,26 +70,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: null };
   }, []);
 
-  const signInWithGoogle = useCallback(async () => {
-    const siteUrl = getSiteUrl();
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${siteUrl}/auth/callback` },
-    });
-    if (error) return { error: error.message };
-    return { error: null };
-  }, []);
-
-  const signInWithMagicLink = useCallback(async (email: string) => {
-    const siteUrl = getSiteUrl();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: `${siteUrl}/auth/callback` },
-    });
-    if (error) return { error: error.message };
-    return { error: null };
-  }, []);
-
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
   }, []);
@@ -92,8 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = checkIsAdmin(user);
 
   const value = useMemo(
-    () => ({ user, session, isAdmin, loading, signIn, signInWithGoogle, signInWithMagicLink, signOut }),
-    [user, session, isAdmin, loading, signIn, signInWithGoogle, signInWithMagicLink, signOut]
+    () => ({ user, session, isAdmin, loading, signIn, signOut }),
+    [user, session, isAdmin, loading, signIn, signOut]
   );
 
   return (
