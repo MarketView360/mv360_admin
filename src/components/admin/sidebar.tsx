@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { logAuthEvent } from "@/lib/api";
 import {
   LayoutDashboard,
   Cpu,
@@ -33,11 +34,25 @@ const navItems = [
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, signOut } = useAuth();
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const handleSignOut = async () => {
+    logAuthEvent({
+      userId: user?.id,
+      eventType: "logout",
+      action: `Admin portal logout for ${user?.email}`,
+      metadata: { email: user?.email, trigger: "sidebar" },
+    });
+    await signOut();
+    router.push("/login");
+  };
 
   const logoSrc = mounted && resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg";
 
@@ -92,7 +107,7 @@ export function AdminSidebar() {
           variant="ghost"
           size="sm"
           className="w-full justify-start gap-2 text-muted-foreground"
-          onClick={() => signOut()}
+          onClick={handleSignOut}
         >
           <LogOut className="h-4 w-4" />
           Sign Out

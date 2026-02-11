@@ -97,6 +97,50 @@ export async function fetchSecurityEvents(limit = 100) {
   return data ?? [];
 }
 
+// ─── Admin Auth Logging ──────────────────────────────────────────────────────
+
+export type AuthEventType =
+  | "login_success"
+  | "login_failed"
+  | "access_denied"
+  | "logout"
+  | "session_timeout"
+  | "brute_force_lockout";
+
+export async function logAuthEvent(params: {
+  userId?: string | null;
+  eventType: AuthEventType;
+  action: string;
+  metadata?: Record<string, unknown>;
+}) {
+  try {
+    await supabase.from("security_events").insert({
+      user_id: params.userId ?? null,
+      event_type: params.eventType,
+      action: params.action,
+      source: "admin_portal",
+      metadata: {
+        ...params.metadata,
+        timestamp: new Date().toISOString(),
+        user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      },
+    });
+  } catch {
+    // Fire-and-forget — never block the UI for logging
+  }
+}
+
+export async function fetchAdminAuthLogs(limit = 200) {
+  const { data, error } = await supabase
+    .from("security_events")
+    .select("*")
+    .eq("source", "admin_portal")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
+}
+
 // ─── Revenue (placeholder — reads from a revenue table if it exists) ─────────
 
 export async function fetchRevenueData() {

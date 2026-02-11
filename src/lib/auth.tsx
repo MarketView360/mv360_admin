@@ -1,8 +1,43 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useMemo, useCallback, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useRef, useMemo, useCallback, ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import type { User, Session } from "@supabase/supabase-js";
+
+// ─── Brute-force protection ─────────────────────────────────────────────────
+
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 2 * 60 * 1000; // 2 minutes
+
+interface LoginGate {
+  attempts: number;
+  lockedUntil: number | null;
+}
+
+function getLoginGate(): LoginGate {
+  if (typeof window === "undefined") return { attempts: 0, lockedUntil: null };
+  try {
+    const raw = sessionStorage.getItem("_login_gate");
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return { attempts: 0, lockedUntil: null };
+}
+
+function setLoginGate(gate: LoginGate) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem("_login_gate", JSON.stringify(gate));
+}
+
+function resetLoginGate() {
+  if (typeof window === "undefined") return;
+  sessionStorage.removeItem("_login_gate");
+}
+
+// ─── Session timeout ─────────────────────────────────────────────────────────
+
+const SESSION_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour of inactivity
+
+// ─── Auth context ────────────────────────────────────────────────────────────
 
 interface AuthContextType {
   user: User | null;
@@ -45,8 +80,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastActivityRef = useRef(0);
 
   useEffect(() => {
+    lastActivityRef.current = Date.now();
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
@@ -64,13 +101,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // ── Session timeout: auto sign-out after inactivity ──────────────────────
+
+  useEffect(() => {
+    if (!user) return;
+
+    const resetTimer = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    const events = ["mousedown", "keydown", "scroll", "touchstart"] as const;
+    events.forEach((e) => window.addEventListener(e, resetTimer));
+
+    const interval = setInterval(async () => {
+      if (Date.now() - lastActivityRef.current > SESSION_TIMEOUT_MS) {
+        await supabase.auth.signOut();
+        setUser(null);
+        setSession(null);
+      }
+    }, 30_000); // check every 30s
+
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, resetTimer));
+      clearInterval(interval);
+    };
+  }, [user]);
+
+  // ── Sign in with brute-force protection ──────────────────────────────────
+
   const signIn = useCallback(async (email: string, password: string) => {
+    const gate = getLoginGate();
+
+    // Check if locked out
+    if (gate.lockedUntil && Date.now() < gate.lockedUntil) {
+      const secsLeft = Math.ceil((gate.lockedUntil - Date.now()) / 1000);
+      return { error: `Too many failed attempts. Try again in ${secsLeft}s.` };
+    }
+
+    // Reset if lockout expired
+    if (gate.lockedUntil && Date.now() >= gate.lockedUntil) {
+      resetLoginGate();
+    }
+
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return { error: error.message };
+
+    if (error) {
+      const updated = getLoginGate();
+      updated.attempts += 1;
+      if (updated.attempts >= MAX_ATTEMPTS) {
+        updated.lockedUntil = Date.now() + LOCKOUT_DURATION_MS;
+      }
+      setLoginGate(updated);
+      return { error: error.message };
+    }
+
+    // Success — reset gate
+    resetLoginGate();
     return { error: null };
   }, []);
 
+  // ── Sign out — clear state immediately ───────────────────────────────────
+
   const signOut = useCallback(async () => {
+    setUser(null);
+    setSession(null);
     await supabase.auth.signOut();
   }, []);
 

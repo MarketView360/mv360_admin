@@ -29,8 +29,9 @@ import {
   Shield,
   ScrollText,
   Filter,
+  ShieldAlert,
 } from "lucide-react";
-import { fetchSyncLogs, fetchSecurityEvents } from "@/lib/api";
+import { fetchSyncLogs, fetchSecurityEvents, fetchAdminAuthLogs } from "@/lib/api";
 
 interface SyncLog {
   id: string;
@@ -52,6 +53,16 @@ interface SecurityEvent {
   metadata: Record<string, unknown> | null;
 }
 
+interface AdminAuthLog {
+  id: string;
+  user_id: string | null;
+  event_type: string;
+  action: string;
+  source: string;
+  created_at: string;
+  metadata: Record<string, unknown> | null;
+}
+
 function LogLevelBadge({ status }: { status: string }) {
   if (status === "completed" || status === "success") {
     return <Badge className="bg-emerald-600/20 text-emerald-700 dark:text-emerald-400 border-0">INFO</Badge>;
@@ -62,21 +73,43 @@ function LogLevelBadge({ status }: { status: string }) {
   return <Badge className="bg-yellow-600/20 text-yellow-700 dark:text-yellow-400 border-0">WARN</Badge>;
 }
 
+function AuthEventBadge({ eventType }: { eventType: string }) {
+  switch (eventType) {
+    case "login_success":
+      return <Badge className="bg-emerald-600/20 text-emerald-700 dark:text-emerald-400 border-0">Login Success</Badge>;
+    case "login_failed":
+      return <Badge className="bg-red-600/20 text-red-700 dark:text-red-400 border-0">Login Failed</Badge>;
+    case "access_denied":
+      return <Badge className="bg-orange-600/20 text-orange-700 dark:text-orange-400 border-0">Access Denied</Badge>;
+    case "logout":
+      return <Badge className="bg-blue-600/20 text-blue-700 dark:text-blue-400 border-0">Logout</Badge>;
+    case "session_timeout":
+      return <Badge className="bg-yellow-600/20 text-yellow-700 dark:text-yellow-400 border-0">Session Timeout</Badge>;
+    case "brute_force_lockout":
+      return <Badge className="bg-red-600/20 text-red-700 dark:text-red-400 border-0 animate-pulse">Brute Force</Badge>;
+    default:
+      return <Badge variant="outline" className="font-mono text-xs">{eventType}</Badge>;
+  }
+}
+
 export default function LoggingPage() {
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
+  const [adminAuthLogs, setAdminAuthLogs] = useState<AdminAuthLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [logs, events] = await Promise.all([
+      const [logs, events, authLogs] = await Promise.all([
         fetchSyncLogs(100),
         fetchSecurityEvents(100),
+        fetchAdminAuthLogs(200),
       ]);
       setSyncLogs(logs);
       setSecurityEvents(events);
+      setAdminAuthLogs(authLogs);
     } finally {
       setLoading(false);
     }
@@ -101,8 +134,20 @@ export default function LoggingPage() {
       (e.ip_address ?? "").includes(filter)
   );
 
+  const filteredAuthLogs = adminAuthLogs.filter(
+    (l) =>
+      !filter ||
+      l.event_type.toLowerCase().includes(filter.toLowerCase()) ||
+      l.action.toLowerCase().includes(filter.toLowerCase()) ||
+      ((l.metadata?.email as string) ?? "").toLowerCase().includes(filter.toLowerCase())
+  );
+
   const errorCount = syncLogs.filter(
     (l) => l.status === "failed" || l.status === "error"
+  ).length;
+
+  const threatCount = adminAuthLogs.filter(
+    (l) => l.event_type === "login_failed" || l.event_type === "brute_force_lockout" || l.event_type === "access_denied"
   ).length;
 
   return (
@@ -120,7 +165,7 @@ export default function LoggingPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -156,6 +201,19 @@ export default function LoggingPage() {
             <div className="text-2xl font-bold">{securityEvents.length}</div>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Auth Threats
+            </CardTitle>
+            <ShieldAlert className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${threatCount > 0 ? "text-destructive" : ""}`}>
+              {threatCount}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex items-center gap-2">
@@ -185,6 +243,9 @@ export default function LoggingPage() {
           </TabsTrigger>
           <TabsTrigger value="security">
             Security Events ({filteredSecurityEvents.length})
+          </TabsTrigger>
+          <TabsTrigger value="admin-auth">
+            Admin Auth ({filteredAuthLogs.length})
           </TabsTrigger>
         </TabsList>
 
@@ -289,6 +350,58 @@ export default function LoggingPage() {
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground">
                             {new Date(event.created_at).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="admin-auth">
+          <Card>
+            <CardHeader>
+              <CardTitle>Admin Portal Auth Logs</CardTitle>
+              <CardDescription>Login attempts, access denied events, logouts & brute-force lockouts</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="space-y-2">
+                  {[...Array(8)].map((_, i) => (
+                    <Skeleton key={i} className="h-10 w-full" />
+                  ))}
+                </div>
+              ) : filteredAuthLogs.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  No admin auth logs found.
+                </p>
+              ) : (
+                <ScrollArea className="h-[500px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Event</TableHead>
+                        <TableHead>Action</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Timestamp</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredAuthLogs.map((log) => (
+                        <TableRow key={log.id}>
+                          <TableCell>
+                            <AuthEventBadge eventType={log.event_type} />
+                          </TableCell>
+                          <TableCell className="max-w-[300px] truncate text-xs">
+                            {log.action}
+                          </TableCell>
+                          <TableCell className="text-xs font-mono">
+                            {(log.metadata?.email as string) ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                            {new Date(log.created_at).toLocaleString()}
                           </TableCell>
                         </TableRow>
                       ))}
