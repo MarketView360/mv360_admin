@@ -1,30 +1,37 @@
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
-let _supabase: SupabaseClient | null = null;
+// ─── Browser client (use in client components) ──────────────────────────────
 
-export function getSupabase(): SupabaseClient {
-  if (!_supabase) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !key) {
-      throw new Error(
-        "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY"
-      );
-    }
-    _supabase = createClient(url, key);
-  }
-  return _supabase;
+export function createBrowserSupabase() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 }
 
-// Convenience alias — use in client components
-export const supabase = new Proxy({} as SupabaseClient, {
-  get(_target, prop) {
-    return (getSupabase() as unknown as Record<string, unknown>)[prop as string];
-  },
-});
+// Singleton for client components — safe because browser clients are stateless
+let _browser: ReturnType<typeof createBrowserSupabase> | null = null;
+export function getBrowserSupabase() {
+  if (!_browser) _browser = createBrowserSupabase();
+  return _browser;
+}
 
-export function createServiceClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createClient(url, serviceKey);
+// Convenience alias kept for backward-compat with existing client-side code
+export const supabase = new Proxy(
+  {} as ReturnType<typeof createBrowserSupabase>,
+  {
+    get(_target, prop) {
+      return (getBrowserSupabase() as unknown as Record<string, unknown>)[
+        prop as string
+      ];
+    },
+  }
+);
+
+// ─── Helper: get the admin site URL for redirects ────────────────────────────
+
+export function getSiteUrl(): string {
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
+  if (typeof window !== "undefined") return window.location.origin;
+  return "http://localhost:3000";
 }

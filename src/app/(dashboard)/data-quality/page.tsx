@@ -58,6 +58,7 @@ export default function DataQualityPage() {
       const [
         companiesRes,
         metricsRes,
+        pricesCompaniesRes,
         staleRes,
         recentPricesRes,
         totalPricesRes,
@@ -66,6 +67,7 @@ export default function DataQualityPage() {
       ] = await Promise.all([
         supabase.from("companies").select("id", { count: "exact", head: true }),
         supabase.from("company_metrics_ttm").select("id", { count: "exact", head: true }),
+        supabase.from("price_data").select("company_id", { count: "exact", head: true }),
         supabase
           .from("companies")
           .select("id, ticker, name, last_updated")
@@ -85,7 +87,7 @@ export default function DataQualityPage() {
       setData({
         totalCompanies: companiesRes.count ?? 0,
         companiesWithMetrics: metricsRes.count ?? 0,
-        companiesWithPrices: metricsRes.count ?? 0,
+        companiesWithPrices: pricesCompaniesRes.count ?? 0,
         staleCompanies: (staleRes.data as StaleCompany[]) ?? [],
         recentPriceCount: recentPricesRes.count ?? 0,
         totalPriceRows: totalPricesRes.count ?? 0,

@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { supabase } from "@/lib/supabase";
+import { createContext, useContext, useEffect, useState, useMemo, useCallback, ReactNode } from "react";
+import { supabase, getSiteUrl } from "@/lib/supabase";
 import type { User, Session } from "@supabase/supabase-js";
 
 interface AuthContextType {
@@ -59,38 +59,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { error: error.message };
     return { error: null };
-  };
+  }, []);
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = useCallback(async () => {
+    const siteUrl = getSiteUrl();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin + "/auth/callback" },
+      options: { redirectTo: `${siteUrl}/auth/callback` },
     });
     if (error) return { error: error.message };
     return { error: null };
-  };
+  }, []);
 
-  const signInWithMagicLink = async (email: string) => {
+  const signInWithMagicLink = useCallback(async (email: string) => {
+    const siteUrl = getSiteUrl();
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: window.location.origin + "/auth/callback" },
+      options: { emailRedirectTo: `${siteUrl}/auth/callback` },
     });
     if (error) return { error: error.message };
     return { error: null };
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await supabase.auth.signOut();
-  };
+  }, []);
 
   const isAdmin = checkIsAdmin(user);
 
+  const value = useMemo(
+    () => ({ user, session, isAdmin, loading, signIn, signInWithGoogle, signInWithMagicLink, signOut }),
+    [user, session, isAdmin, loading, signIn, signInWithGoogle, signInWithMagicLink, signOut]
+  );
+
   return (
-    <AuthContext.Provider value={{ user, session, isAdmin, loading, signIn, signInWithGoogle, signInWithMagicLink, signOut }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useTheme } from "next-themes";
 import { useAuth } from "@/lib/auth";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
@@ -23,12 +23,20 @@ export default function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [magicLoading, setMagicLoading] = useState(false);
   const [magicSent, setMagicSent] = useState(false);
-  const { signIn, signInWithGoogle, signInWithMagicLink } = useAuth();
+  const { user, loading: authLoading, signIn, signInWithGoogle, signInWithMagicLink } = useAuth();
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace("/overview");
+    }
+  }, [user, authLoading, router]);
 
   const logoSrc = mounted && resolvedTheme === "dark" ? "/logo-dark.svg" : "/logo.svg";
 
