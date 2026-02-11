@@ -10,18 +10,18 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import {
   DollarSign,
   TrendingUp,
   Users,
-  ArrowDownRight,
   CreditCard,
+  RefreshCw,
+  UserPlus,
+  Crown,
 } from "lucide-react";
 import { fetchRevenueData } from "@/lib/api";
 import {
-  AreaChart,
-  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -32,278 +32,316 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from "recharts";
 
 interface RevenueData {
-  mrr: number;
-  totalRevenue: number;
-  activeSubscriptions: number;
-  churnRate: number;
-  revenueByMonth: { month: string; revenue: number }[];
+  totalUsers: number;
+  free: number;
+  premium: number;
+  pro: number;
+  withBilling: number;
+  estimatedMRR: number;
+  newThisWeek: number;
+  newThisMonth: number;
+  conversionRate: number;
+  revenueTimeline: {
+    month: string;
+    free: number;
+    premium: number;
+    pro: number;
+    estimatedRevenue: number;
+  }[];
 }
 
-const PLAN_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ec4899"];
+const TIER_COLORS: Record<string, string> = {
+  free: "#6366f1",
+  premium: "#f59e0b",
+  pro: "#10b981",
+};
 
-// Placeholder plan distribution — replace with real data when subscriptions table exists
-const planDistribution = [
-  { name: "Free", value: 10, color: PLAN_COLORS[0] },
-  { name: "Pro", value: 3, color: PLAN_COLORS[1] },
-  { name: "Enterprise", value: 1, color: PLAN_COLORS[2] },
-];
+const CHART_TOOLTIP = {
+  backgroundColor: "hsl(var(--card))",
+  border: "1px solid hsl(var(--border))",
+  borderRadius: 8,
+  fontSize: 12,
+  color: "hsl(var(--foreground))",
+};
 
-function StatCard({
-  title,
-  value,
-  icon: Icon,
-  description,
-  trend,
-  trendDown,
-}: {
-  title: string;
-  value: string;
-  icon: React.ElementType;
-  description?: string;
-  trend?: string;
-  trendDown?: boolean;
-}) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
-      </CardHeader>
-      <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        {trend && (
-          <p
-            className={`mt-1 flex items-center text-xs ${
-              trendDown ? "text-destructive" : "text-emerald-500"
-            }`}
-          >
-            {trendDown && <ArrowDownRight className="mr-1 h-3 w-3" />}
-            {!trendDown && <TrendingUp className="mr-1 h-3 w-3" />}
-            {trend}
-          </p>
-        )}
-        {description && !trend && (
-          <p className="mt-1 text-xs text-muted-foreground">{description}</p>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+const AXIS_TICK = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
 
 export default function RevenuePage() {
   const [data, setData] = useState<RevenueData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const result = await fetchRevenueData();
+      setData(result);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    fetchRevenueData()
-      .then(setData)
-      .finally(() => setLoading(false));
+    loadData();
   }, []);
 
-  const hasRevenue = data && data.totalRevenue > 0;
+  const S = () => <Skeleton className="h-8 w-20" />;
+
+  const pieData = data
+    ? [
+        { name: "Free", value: data.free, color: TIER_COLORS.free },
+        { name: "Premium", value: data.premium, color: TIER_COLORS.premium },
+        { name: "Pro", value: data.pro, color: TIER_COLORS.pro },
+      ].filter((d) => d.value > 0)
+    : [];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Revenue</h1>
-        <p className="text-muted-foreground">
-          Subscription tracking, MRR & churn metrics
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Revenue & Subscriptions</h1>
+          <p className="text-muted-foreground">
+            Real subscription data from user_profiles
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </Button>
       </div>
 
-      {!hasRevenue && !loading && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <CreditCard className="mb-4 h-12 w-12 text-muted-foreground" />
-            <h3 className="text-lg font-semibold">No Revenue Data Yet</h3>
-            <p className="mt-1 max-w-md text-center text-sm text-muted-foreground">
-              Revenue tracking will activate once you set up a subscriptions/payments
-              table in Supabase. The charts below show placeholder data for preview.
-            </p>
-            <Badge variant="outline" className="mt-4">
-              Coming Soon
-            </Badge>
+      {/* KPI Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Estimated MRR</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {loading ? <S /> : (
+              <>
+                <div className="text-2xl font-bold">${data?.estimatedMRR.toFixed(2)}</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {data?.premium ?? 0} premium + {data?.pro ?? 0} pro
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
-      )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {loading ? (
-          [...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <Skeleton className="mb-3 h-4 w-24" />
-                <Skeleton className="h-8 w-16" />
-              </CardContent>
-            </Card>
-          ))
-        ) : (
-          <>
-            <StatCard
-              title="Monthly Recurring Revenue"
-              value={`$${(data?.mrr ?? 0).toLocaleString()}`}
-              icon={DollarSign}
-              description="Current MRR"
-            />
-            <StatCard
-              title="Total Revenue"
-              value={`$${(data?.totalRevenue ?? 0).toLocaleString()}`}
-              icon={TrendingUp}
-              description="All time"
-            />
-            <StatCard
-              title="Active Subscriptions"
-              value={String(data?.activeSubscriptions ?? 0)}
-              icon={Users}
-              description="Paying customers"
-            />
-            <StatCard
-              title="Churn Rate"
-              value={`${(data?.churnRate ?? 0).toFixed(1)}%`}
-              icon={ArrowDownRight}
-              description="Monthly churn"
-              trend={
-                data?.churnRate && data.churnRate > 5
-                  ? `${data.churnRate.toFixed(1)}% — above target`
-                  : undefined
-              }
-              trendDown={data?.churnRate ? data.churnRate > 5 : false}
-            />
-          </>
-        )}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Conversion Rate</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {loading ? <S /> : (
+              <>
+                <div className={`text-2xl font-bold ${(data?.conversionRate ?? 0) > 0 ? "text-emerald-500" : ""}`}>
+                  {data?.conversionRate ?? 0}%
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">free → paid</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">New This Month</CardTitle>
+            <UserPlus className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {loading ? <S /> : (
+              <>
+                <div className="text-2xl font-bold">{data?.newThisMonth ?? 0}</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {data?.newThisWeek ?? 0} this week
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Paying Users</CardTitle>
+            <Crown className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {loading ? <S /> : (
+              <>
+                <div className="text-2xl font-bold">{(data?.premium ?? 0) + (data?.pro ?? 0)}</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  of {data?.totalUsers ?? 0} total &middot; {data?.withBilling ?? 0} with billing
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      <Tabs defaultValue="mrr">
-        <TabsList>
-          <TabsTrigger value="mrr">MRR Trend</TabsTrigger>
-          <TabsTrigger value="plans">Plan Distribution</TabsTrigger>
-        </TabsList>
+      {/* Charts Row */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Stacked Bar: Monthly signups by tier */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Monthly Signups by Tier</CardTitle>
+            <CardDescription>User acquisition breakdown (last 6 months)</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-72 w-full" />
+            ) : (data?.revenueTimeline.length ?? 0) === 0 ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">No data yet.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={data?.revenueTimeline}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="month" tick={AXIS_TICK} />
+                  <YAxis tick={AXIS_TICK} allowDecimals={false} />
+                  <Tooltip contentStyle={CHART_TOOLTIP} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="free" stackId="a" fill={TIER_COLORS.free} radius={[0, 0, 0, 0]} name="Free" />
+                  <Bar dataKey="premium" stackId="a" fill={TIER_COLORS.premium} name="Premium" />
+                  <Bar dataKey="pro" stackId="a" fill={TIER_COLORS.pro} radius={[4, 4, 0, 0]} name="Pro" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
 
-        <TabsContent value="mrr">
-          <Card>
-            <CardHeader>
-              <CardTitle>MRR Over Time</CardTitle>
-              <CardDescription>Monthly recurring revenue trend</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {data?.revenueByMonth && data.revenueByMonth.length > 0 ? (
-                <ResponsiveContainer width="100%" height={300}>
-                  <AreaChart data={data.revenueByMonth}>
-                    <defs>
-                      <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
-                        <stop offset="50%" stopColor="#8b5cf6" stopOpacity={0.15} />
-                        <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.02} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke="hsl(var(--border))"
-                    />
-                    <XAxis
-                      dataKey="month"
-                      tick={{
-                        fontSize: 11,
-                        fill: "hsl(var(--muted-foreground))",
-                      }}
-                    />
-                    <YAxis
-                      tick={{
-                        fontSize: 11,
-                        fill: "hsl(var(--muted-foreground))",
-                      }}
-                      tickFormatter={(v) => `$${v}`}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: 8,
-                        fontSize: 12,
-                        color: "hsl(var(--foreground))",
-                      }}
-                      formatter={(value) => [`$${value}`, "Revenue"]}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="revenue"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      fill="url(#revenueGradient)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-[300px] items-center justify-center">
-                  <p className="text-sm text-muted-foreground">
-                    No revenue data to display. Connect a payment provider to get started.
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="plans">
-          <Card>
-            <CardHeader>
-              <CardTitle>Plan Distribution</CardTitle>
-              <CardDescription>
-                Current user distribution across plans (placeholder)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-8">
-                <ResponsiveContainer width={200} height={200}>
+        {/* Pie: Current distribution */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Tier Distribution</CardTitle>
+            <CardDescription>Current user split</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="mx-auto h-48 w-48 rounded-full" />
+            ) : pieData.length === 0 ? (
+              <p className="py-12 text-center text-sm text-muted-foreground">No users.</p>
+            ) : (
+              <div className="flex flex-col items-center gap-4">
+                <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie
-                      data={planDistribution}
+                      data={pieData}
+                      dataKey="value"
+                      nameKey="name"
                       cx="50%"
                       cy="50%"
                       innerRadius={50}
                       outerRadius={80}
-                      dataKey="value"
-                      strokeWidth={2}
-                      stroke="hsl(var(--background))"
+                      paddingAngle={3}
+                      strokeWidth={0}
                     >
-                      {planDistribution.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      {pieData.map((entry) => (
+                        <Cell key={entry.name} fill={entry.color} />
                       ))}
                     </Pie>
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "hsl(var(--card))",
-                        border: "1px solid hsl(var(--border))",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
+                    <Tooltip contentStyle={CHART_TOOLTIP} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="space-y-3">
-                  {planDistribution.map((plan) => (
-                    <div key={plan.name} className="flex items-center gap-3">
-                      <div
-                        className="h-3 w-3 rounded-full"
-                        style={{ backgroundColor: plan.color }}
-                      />
-                      <span className="text-sm font-medium">{plan.name}</span>
-                      <span className="text-sm text-muted-foreground">
-                        {plan.value} users
-                      </span>
-                    </div>
+                <div className="flex flex-wrap justify-center gap-3">
+                  {pieData.map((t) => (
+                    <Badge key={t.name} variant="outline" className="gap-1.5">
+                      <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: t.color }} />
+                      {t.name}: {t.value}
+                    </Badge>
                   ))}
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Subscription details */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4" /> Subscription Breakdown
+            </CardTitle>
+            <CardDescription>Detailed tier metrics</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-6 w-full" />)}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {[
+                  { label: "Free Users", value: data?.free ?? 0, color: TIER_COLORS.free },
+                  { label: "Premium Users ($19.99/mo)", value: data?.premium ?? 0, color: TIER_COLORS.premium },
+                  { label: "Pro Users ($49.99/mo)", value: data?.pro ?? 0, color: TIER_COLORS.pro },
+                ].map((row) => {
+                  const pct = (data?.totalUsers ?? 1) > 0 ? Math.round((row.value / (data?.totalUsers ?? 1)) * 100) : 0;
+                  return (
+                    <div key={row.label}>
+                      <div className="mb-1 flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">{row.label}</span>
+                        <span className="font-semibold tabular-nums">{row.value} ({pct}%)</span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${pct}%`, backgroundColor: row.color }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-4 w-4" /> Revenue Summary
+            </CardTitle>
+            <CardDescription>Estimated revenue from current subscriptions</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-6 w-full" />)}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Premium Revenue</span>
+                  <span className="font-semibold tabular-nums">${((data?.premium ?? 0) * 19.99).toFixed(2)}/mo</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Pro Revenue</span>
+                  <span className="font-semibold tabular-nums">${((data?.pro ?? 0) * 49.99).toFixed(2)}/mo</span>
+                </div>
+                <div className="border-t pt-2 flex items-center justify-between text-sm">
+                  <span className="font-medium">Total Estimated MRR</span>
+                  <span className="font-bold text-lg tabular-nums">${data?.estimatedMRR.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Estimated ARR</span>
+                  <span className="font-semibold tabular-nums">${((data?.estimatedMRR ?? 0) * 12).toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Users with Billing ID</span>
+                  <span className="font-semibold tabular-nums">{data?.withBilling ?? 0}</span>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

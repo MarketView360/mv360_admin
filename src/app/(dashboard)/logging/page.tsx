@@ -35,13 +35,15 @@ import { fetchSyncLogs, fetchSecurityEvents, fetchAdminAuthLogs } from "@/lib/ap
 
 interface SyncLog {
   id: string;
-  task_name: string;
+  sync_type: string;
   status: string;
   started_at: string;
-  finished_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
   records_processed: number | null;
+  records_failed: number | null;
   error_message: string | null;
-  api_units_used: number | null;
+  metadata: Record<string, unknown> | null;
 }
 
 interface SecurityEvent {
@@ -122,7 +124,7 @@ export default function LoggingPage() {
   const filteredSyncLogs = syncLogs.filter(
     (l) =>
       !filter ||
-      l.task_name.toLowerCase().includes(filter.toLowerCase()) ||
+      l.sync_type.toLowerCase().includes(filter.toLowerCase()) ||
       l.status.toLowerCase().includes(filter.toLowerCase()) ||
       (l.error_message ?? "").toLowerCase().includes(filter.toLowerCase())
   );
@@ -267,11 +269,12 @@ export default function LoggingPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Level</TableHead>
-                        <TableHead>Task</TableHead>
-                        <TableHead>Timestamp</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Sync Type</TableHead>
+                        <TableHead>Started</TableHead>
                         <TableHead className="text-right">Records</TableHead>
-                        <TableHead>Message</TableHead>
+                        <TableHead className="text-right">Duration</TableHead>
+                        <TableHead>Error</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -281,18 +284,22 @@ export default function LoggingPage() {
                             <LogLevelBadge status={log.status} />
                           </TableCell>
                           <TableCell className="font-mono text-xs">
-                            {log.task_name}
+                            {log.sync_type}
                           </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                             {new Date(log.started_at).toLocaleString()}
                           </TableCell>
-                          <TableCell className="text-right text-xs">
+                          <TableCell className="text-right text-xs tabular-nums">
                             {log.records_processed?.toLocaleString() ?? "—"}
+                            {log.records_failed ? <span className="text-destructive"> / {log.records_failed} err</span> : null}
                           </TableCell>
-                          <TableCell className="max-w-[300px] truncate text-xs">
+                          <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
+                            {log.duration_ms ? `${(log.duration_ms / 1000).toFixed(1)}s` : "—"}
+                          </TableCell>
+                          <TableCell className="max-w-[250px] truncate text-xs">
                             {log.error_message || (
                               <span className="text-muted-foreground">
-                                Completed successfully
+                                OK
                               </span>
                             )}
                           </TableCell>

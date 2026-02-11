@@ -34,13 +34,15 @@ import {
 
 interface SyncLog {
   id: string;
-  task_name: string;
+  sync_type: string;
   status: string;
   started_at: string;
-  finished_at: string | null;
+  completed_at: string | null;
+  duration_ms: number | null;
   records_processed: number | null;
+  records_failed: number | null;
   error_message: string | null;
-  api_units_used: number | null;
+  metadata: Record<string, unknown> | null;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -113,8 +115,8 @@ export default function GenesisPage() {
     (sum, l) => sum + (l.records_processed ?? 0),
     0
   );
-  const totalApiUnits = logs.reduce(
-    (sum, l) => sum + (l.api_units_used ?? 0),
+  const totalFailed = logs.reduce(
+    (sum, l) => sum + (l.records_failed ?? 0),
     0
   );
   const failedCount = logs.filter(
@@ -192,20 +194,20 @@ export default function GenesisPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              API Units Used
+              Records Failed
             </CardTitle>
             <Zap className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
+            <div className={`text-2xl font-bold ${totalFailed > 0 ? "text-destructive" : ""}`}>
               {loading ? (
                 <Skeleton className="h-8 w-20" />
               ) : (
-                totalApiUnits.toLocaleString()
+                totalFailed.toLocaleString()
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              EODHD API consumption
+              Across all pipeline runs
             </p>
           </CardContent>
         </Card>
@@ -263,47 +265,40 @@ export default function GenesisPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Task</TableHead>
+                  <TableHead>Sync Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Started</TableHead>
                   <TableHead>Duration</TableHead>
                   <TableHead className="text-right">Records</TableHead>
-                  <TableHead className="text-right">API Units</TableHead>
+                  <TableHead className="text-right">Failed</TableHead>
                   <TableHead>Error</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {logs.map((log) => {
-                  const started = new Date(log.started_at);
-                  const finished = log.finished_at
-                    ? new Date(log.finished_at)
-                    : null;
-                  const durationMs = finished
-                    ? finished.getTime() - started.getTime()
-                    : null;
-                  const durationStr = durationMs
-                    ? durationMs > 60000
-                      ? `${(durationMs / 60000).toFixed(1)}m`
-                      : `${(durationMs / 1000).toFixed(1)}s`
+                  const durationStr = log.duration_ms
+                    ? log.duration_ms > 60000
+                      ? `${(log.duration_ms / 60000).toFixed(1)}m`
+                      : `${(log.duration_ms / 1000).toFixed(1)}s`
                     : "—";
 
                   return (
                     <TableRow key={log.id}>
-                      <TableCell className="font-medium">
-                        {log.task_name}
+                      <TableCell className="font-medium capitalize">
+                        {log.sync_type}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={log.status} />
                       </TableCell>
-                      <TableCell className="text-xs">
-                        {started.toLocaleString()}
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {new Date(log.started_at).toLocaleString()}
                       </TableCell>
-                      <TableCell className="text-xs">{durationStr}</TableCell>
-                      <TableCell className="text-right text-xs">
+                      <TableCell className="text-xs tabular-nums">{durationStr}</TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">
                         {log.records_processed?.toLocaleString() ?? "—"}
                       </TableCell>
-                      <TableCell className="text-right text-xs">
-                        {log.api_units_used?.toLocaleString() ?? "—"}
+                      <TableCell className="text-right text-xs tabular-nums">
+                        {log.records_failed ?? 0}
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate text-xs text-destructive">
                         {log.error_message || "—"}
