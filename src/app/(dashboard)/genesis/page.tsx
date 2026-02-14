@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { fetchSyncLogs, triggerGenesisPipeline, fetchGenesisStatus } from "@/lib/api";
+import { fetchSyncLogs, triggerGenesisPipeline, fetchGenesisStatus, fetchGenesisBudget } from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -30,6 +30,7 @@ import {
   Cpu,
   Zap,
   RefreshCw,
+  Activity,
 } from "lucide-react";
 
 interface SyncLog {
@@ -76,18 +77,23 @@ export default function GenesisPage() {
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState<string | null>(null);
   const [statusData, setStatusData] = useState<Record<string, unknown> | null>(null);
+  const [budgetData, setBudgetData] = useState<Record<string, unknown> | null>(null);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [syncLogs, status] = await Promise.all([
+      const [syncLogs, status, budget] = await Promise.all([
         fetchSyncLogs(50),
         session?.access_token
           ? fetchGenesisStatus(session.access_token).catch(() => null)
           : null,
+        session?.access_token
+          ? fetchGenesisBudget(session.access_token).catch(() => null)
+          : null,
       ]);
       setLogs(syncLogs);
       setStatusData(status);
+      setBudgetData(budget);
     } finally {
       setLoading(false);
     }
@@ -98,7 +104,7 @@ export default function GenesisPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleTrigger = async (type: "daily" | "weekly") => {
+  const handleTrigger = async (type: "daily" | "weekly" | "full") => {
     if (!session?.access_token) return;
     setTriggering(type);
     try {
@@ -167,6 +173,19 @@ export default function GenesisPage() {
             )}
             Run Weekly
           </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => handleTrigger("full")}
+            disabled={!!triggering}
+          >
+            {triggering === "full" ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="mr-2 h-4 w-4" />
+            )}
+            Run Full
+          </Button>
         </div>
       </div>
 
@@ -230,6 +249,40 @@ export default function GenesisPage() {
           </CardContent>
         </Card>
       </div>
+
+      {budgetData && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <CardTitle>API Budget</CardTitle>
+              <CardDescription>EODHD daily call usage</CardDescription>
+            </div>
+            <Activity className="h-5 w-5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <p className="text-sm text-muted-foreground">Used Today</p>
+                <p className="text-2xl font-bold">
+                  {((budgetData as Record<string, Record<string, unknown>>)?.data?.used as number ?? 0).toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Remaining</p>
+                <p className="text-2xl font-bold">
+                  {((budgetData as Record<string, Record<string, unknown>>)?.data?.remaining as number ?? 0).toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Daily Limit</p>
+                <p className="text-2xl font-bold">
+                  {((budgetData as Record<string, Record<string, unknown>>)?.data?.limit as number ?? 0).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {statusData && (
         <Card>

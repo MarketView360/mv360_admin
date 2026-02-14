@@ -368,15 +368,20 @@ export async function fetchRevenueData() {
   };
 }
 
-// ─── Backend API calls (for triggering genesis, etc.) ─────────────────────────
+// ─── Genesis API calls ────────────────────────────────────────────────────────
+// Points directly at the Go Genesis service (standalone REST API).
+// Falls back to the NestJS backend URL for backward compatibility.
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const GENESIS_URL =
+  process.env.NEXT_PUBLIC_GENESIS_URL ??
+  process.env.NEXT_PUBLIC_API_URL ??
+  "http://localhost:4000";
 
 export async function triggerGenesisPipeline(
-  type: "daily" | "weekly",
+  type: "daily" | "weekly" | "full",
   token: string
 ) {
-  const res = await fetch(`${API_URL}/genesis/${type}`, {
+  const res = await fetch(`${GENESIS_URL}/genesis/${type}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -388,7 +393,15 @@ export async function triggerGenesisPipeline(
 }
 
 export async function fetchGenesisStatus(token: string) {
-  const res = await fetch(`${API_URL}/genesis/status`, {
+  const res = await fetch(`${GENESIS_URL}/genesis/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function fetchGenesisBudget(token: string) {
+  const res = await fetch(`${GENESIS_URL}/genesis/budget`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(await res.text());
