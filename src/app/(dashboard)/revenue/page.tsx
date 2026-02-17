@@ -12,7 +12,7 @@ interface RevenueData {
   totalUsers: number;
   free: number;
   premium: number;
-  elite: number;
+  max: number;
   withBilling: number;
   estimatedMRR: number;
   newThisWeek: number;
@@ -22,7 +22,7 @@ interface RevenueData {
     month: string;
     free: number;
     premium: number;
-    elite: number;
+    max: number;
     estimatedRevenue: number;
   }>;
 }
@@ -30,13 +30,13 @@ interface RevenueData {
 const TIER_COLORS = {
   free: "#94a3b8",
   premium: "#3b82f6",
-  elite: "#8b5cf6",
+  max: "#8b5cf6",
 };
 
 const TIER_PRICES = {
   free: 0,
   premium: 19.99,
-  elite: 49.99,
+  max: 49.99,
 };
 
 export default function RevenuePage() {
@@ -77,14 +77,14 @@ export default function RevenuePage() {
   const tierDistributionData = [
     { name: "Free", value: data.free, color: TIER_COLORS.free },
     { name: "Premium", value: data.premium, color: TIER_COLORS.premium },
-    { name: "Elite", value: data.elite, color: TIER_COLORS.elite },
+    { name: "Max", value: data.max, color: TIER_COLORS.max },
   ];
 
   const monthlyData = data.revenueTimeline.map(item => ({
     month: item.month.slice(5),
     Free: item.free,
     Premium: item.premium,
-    Elite: item.elite,
+    Max: item.max,
   }));
 
   const revenueChartData = data.revenueTimeline.map(item => ({
@@ -141,9 +141,9 @@ export default function RevenuePage() {
             <Users className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{data.premium + data.elite}</div>
+            <div className="text-2xl font-bold">{data.premium + data.max}</div>
             <p className="text-xs text-muted-foreground">
-              {data.premium} Premium, {data.elite} Elite
+              {data.premium} Premium, {data.max} Max
             </p>
           </CardContent>
         </Card>
@@ -223,24 +223,24 @@ export default function RevenuePage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Crown className="h-5 w-5 text-purple-500" />
-              Elite Tier
+              Max Tier
             </CardTitle>
-            <CardDescription>${TIER_PRICES.elite}/month</CardDescription>
+            <CardDescription>${TIER_PRICES.max}/month</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               <div>
-                <div className="text-3xl font-bold">{data.elite}</div>
+                <div className="text-3xl font-bold">{data.max}</div>
                 <p className="text-sm text-muted-foreground">users</p>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>% of total</span>
-                  <span className="font-semibold">{Math.round((data.elite / data.totalUsers) * 100)}%</span>
+                  <span className="font-semibold">{Math.round((data.max / data.totalUsers) * 100)}%</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Monthly revenue</span>
-                  <span className="font-semibold text-purple-600">${(data.elite * TIER_PRICES.elite).toFixed(2)}</span>
+                  <span className="font-semibold text-purple-600">${(data.max * TIER_PRICES.max).toFixed(2)}</span>
                 </div>
               </div>
             </div>
@@ -310,7 +310,7 @@ export default function RevenuePage() {
               <Legend />
               <Bar dataKey="Free" stackId="a" fill={TIER_COLORS.free} />
               <Bar dataKey="Premium" stackId="a" fill={TIER_COLORS.premium} />
-              <Bar dataKey="Elite" stackId="a" fill={TIER_COLORS.elite} />
+              <Bar dataKey="Max" stackId="a" fill={TIER_COLORS.max} />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>

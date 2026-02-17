@@ -51,7 +51,7 @@ interface OverviewStats {
   totalNews: number;
   adminCount: number;
   premiumCount: number;
-  eliteCount: number;
+  maxCount: number;
   freeCount: number;
   newUsersThisWeek: number;
   recentSyncs: SyncLog[];
@@ -167,7 +167,7 @@ export default function OverviewPage() {
                     {stats?.premiumCount} premium
                   </Badge>
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-500/40 text-purple-600 dark:text-purple-400">
-                    {stats?.eliteCount} elite
+                    {stats?.maxCount} max
                   </Badge>
                 </div>
               </>

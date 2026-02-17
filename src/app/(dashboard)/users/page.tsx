@@ -32,7 +32,7 @@ interface UserProfile {
 const TIER_COLORS = {
   free: "#94a3b8",
   premium: "#3b82f6",
-  elite: "#8b5cf6",
+  max: "#8b5cf6",
 };
 
 export default function UsersPage() {
@@ -124,8 +124,8 @@ export default function UsersPage() {
   const getTierStats = () => {
     const free = users.filter(u => !u.subscription_tier || u.subscription_tier === "free").length;
     const premium = users.filter(u => u.subscription_tier === "premium").length;
-    const elite = users.filter(u => u.subscription_tier === "elite").length;
-    return { free, premium, elite };
+    const max = users.filter(u => u.subscription_tier === "max").length;
+    return { free, premium, max };
   };
 
   const getActivityStats = () => {
@@ -149,7 +149,7 @@ export default function UsersPage() {
   const tierData = [
     { name: "Free", value: tierStats.free, color: TIER_COLORS.free },
     { name: "Premium", value: tierStats.premium, color: TIER_COLORS.premium },
-    { name: "Elite", value: tierStats.elite, color: TIER_COLORS.elite },
+    { name: "Max", value: tierStats.max, color: TIER_COLORS.max },
   ];
 
   const activityData = [
@@ -201,13 +201,13 @@ export default function UsersPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Elite Tier</CardTitle>
+            <CardTitle className="text-sm font-medium">Max Tier</CardTitle>
             <Crown className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{tierStats.elite}</div>
+            <div className="text-2xl font-bold">{tierStats.max}</div>
             <p className="text-xs text-muted-foreground">
-              {users.length > 0 ? Math.round((tierStats.elite / users.length) * 100) : 0}% of total
+              {users.length > 0 ? Math.round((tierStats.max / users.length) * 100) : 0}% of total
             </p>
           </CardContent>
         </Card>
@@ -232,7 +232,7 @@ export default function UsersPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {users.length > 0 ? Math.round(((tierStats.premium + tierStats.elite) / users.length) * 100) : 0}%
+              {users.length > 0 ? Math.round(((tierStats.premium + tierStats.max) / users.length) * 100) : 0}%
             </div>
             <p className="text-xs text-muted-foreground">Free to paid</p>
           </CardContent>
@@ -310,7 +310,7 @@ export default function UsersPage() {
                 <SelectItem value="all">All Tiers</SelectItem>
                 <SelectItem value="free">Free</SelectItem>
                 <SelectItem value="premium">Premium</SelectItem>
-                <SelectItem value="elite">Elite</SelectItem>
+                <SelectItem value="max">Max</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -324,7 +324,7 @@ export default function UsersPage() {
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">
                         <h3 className="font-semibold">{user.full_name || "Anonymous User"}</h3>
-                        <Badge variant={user.subscription_tier === "elite" ? "default" : user.subscription_tier === "premium" ? "secondary" : "outline"}>
+                        <Badge variant={user.subscription_tier === "max" ? "default" : user.subscription_tier === "premium" ? "secondary" : "outline"}>
                           {(user.subscription_tier || "free").toUpperCase()}
                         </Badge>
                         {user.role === "admin" && <Badge className="bg-red-500"><Shield className="h-3 w-3 mr-1" />Admin</Badge>}
@@ -394,7 +394,7 @@ export default function UsersPage() {
                 <SelectContent>
                   <SelectItem value="free">Free</SelectItem>
                   <SelectItem value="premium">Premium ($19.99/mo)</SelectItem>
-                  <SelectItem value="elite">Elite ($49.99/mo)</SelectItem>
+                  <SelectItem value="max">Max ($49.99/mo)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

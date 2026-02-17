@@ -45,7 +45,7 @@ export async function fetchOverviewStats() {
     totalNews: news.count ?? 0,
     adminCount: allUsers.filter((u) => u.role === "admin").length,
     premiumCount: allUsers.filter((u) => u.subscription_tier === "premium").length,
-    eliteCount: allUsers.filter((u) => u.subscription_tier === "elite").length,
+    maxCount: allUsers.filter((u) => u.subscription_tier === "max").length,
     freeCount: allUsers.filter((u) => !u.subscription_tier || u.subscription_tier === "free").length,
     newUsersThisWeek: allUsers.filter(
       (u) => u.created_at && new Date(u.created_at).getTime() > Date.now() - 7 * 86400000
@@ -358,19 +358,19 @@ export async function fetchRevenueData() {
   const users = profiles.data ?? [];
   const free = users.filter((u) => !u.subscription_tier || u.subscription_tier === "free").length;
   const premium = users.filter((u) => u.subscription_tier === "premium").length;
-  const elite = users.filter((u) => u.subscription_tier === "elite").length;
+  const max = users.filter((u) => u.subscription_tier === "max").length;
   const withBilling = users.filter((u) => u.billing_customer_id).length;
 
   // Tier pricing estimates (monthly)
-  const TIER_PRICES: Record<string, number> = { free: 0, premium: 19.99, elite: 49.99 };
-  const estimatedMRR = premium * TIER_PRICES.premium + elite * TIER_PRICES.elite;
+  const TIER_PRICES: Record<string, number> = { free: 0, premium: 19.99, max: 49.99 };
+  const estimatedMRR = premium * TIER_PRICES.premium + max * TIER_PRICES.max;
 
   // Signups by month for last 6 months
-  const monthlySignups: Record<string, { free: number; premium: number; elite: number }> = {};
+  const monthlySignups: Record<string, { free: number; premium: number; max: number }> = {};
   users.forEach((u) => {
     const m = u.created_at?.slice(0, 7) ?? "";
     if (!m) return;
-    if (!monthlySignups[m]) monthlySignups[m] = { free: 0, premium: 0, elite: 0 };
+    if (!monthlySignups[m]) monthlySignups[m] = { free: 0, premium: 0, max: 0 };
     const tier = u.subscription_tier || "free";
     if (tier in monthlySignups[m]) monthlySignups[m][tier as keyof typeof monthlySignups[typeof m]]++;
   });
@@ -379,8 +379,8 @@ export async function fetchRevenueData() {
       month,
       free: counts.free,
       premium: counts.premium,
-      elite: counts.elite,
-      estimatedRevenue: counts.premium * TIER_PRICES.premium + counts.elite * TIER_PRICES.elite,
+      max: counts.max,
+      estimatedRevenue: counts.premium * TIER_PRICES.premium + counts.max * TIER_PRICES.max,
     }))
     .sort((a, b) => a.month.localeCompare(b.month))
     .slice(-6);
@@ -389,12 +389,12 @@ export async function fetchRevenueData() {
     totalUsers: users.length,
     free,
     premium,
-    elite,
+    max,
     withBilling,
     estimatedMRR,
     newThisWeek: weekAgo.count ?? 0,
     newThisMonth: monthAgo.count ?? 0,
-    conversionRate: users.length > 0 ? Math.round(((premium + elite) / users.length) * 100) : 0,
+    conversionRate: users.length > 0 ? Math.round(((premium + max) / users.length) * 100) : 0,
     revenueTimeline,
   };
 }
