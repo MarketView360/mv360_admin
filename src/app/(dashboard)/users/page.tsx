@@ -1,336 +1,427 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  Users,
-  Search,
-  RefreshCw,
-  Shield,
-  UserCheck,
-  Crown,
-  Eye,
-  LayoutGrid,
-  Bell,
-  ChevronDown,
-  ChevronUp,
-  CheckCircle2,
-  Palette,
-} from "lucide-react";
-import { fetchUsers } from "@/lib/api";
-
-interface UserSettings {
-  user_id: string;
-  theme: string | null;
-  text_size: string | null;
-  compact_mode: boolean | null;
-  reduce_animations: boolean | null;
-  desktop_notifications: boolean | null;
-  email_notifications: boolean | null;
-  use_custom_ai_keys: boolean | null;
-}
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Users, Crown, Shield, Search, Edit, Trash2, UserX, RefreshCw, TrendingUp, Activity, AlertTriangle } from "lucide-react";
+import { fetchUsers, updateUserProfile, suspendUser, deleteUserAccount } from "@/lib/api";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 interface UserProfile {
   id: string;
-  email: string | null;
-  display_name: string | null;
+  created_at: string;
   full_name: string | null;
   subscription_tier: string | null;
   role: string | null;
-  created_at: string;
-  updated_at: string | null;
-  onboarded_at: string | null;
   billing_customer_id: string | null;
-  newsletter_opt_in: boolean;
-  announcements_opt_in: boolean;
-  alerts_opt_in: boolean;
-  settings: UserSettings | null;
+  settings: {
+    notification_enabled?: boolean;
+    theme?: string;
+    onboarding_completed?: boolean;
+  } | null;
   screenCount: number;
   watchlistCount: number;
 }
 
-const TIER_STYLE: Record<string, string> = {
-  free: "border-muted-foreground/30",
-  premium: "border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/10",
-  pro: "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/10",
+const TIER_COLORS = {
+  free: "#94a3b8",
+  premium: "#3b82f6",
+  elite: "#8b5cf6",
 };
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [tierFilter, setTierFilter] = useState<string>("all");
+  const [editDialog, setEditDialog] = useState<{ open: boolean; user?: UserProfile }>({ open: false });
+  const [editForm, setEditForm] = useState({ subscription_tier: "", role: "", full_name: "" });
 
-  const loadUsers = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
       const data = await fetchUsers();
-      setUsers(data as UserProfile[]);
+      setUsers(data);
+      setFilteredUsers(data);
+    } catch (err) {
+      console.error("Failed to load users:", err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadUsers();
+    loadData();
   }, []);
 
-  const filtered = users.filter(
-    (u) =>
-      !search ||
-      (u.email ?? "").toLowerCase().includes(search.toLowerCase()) ||
-      (u.display_name ?? "").toLowerCase().includes(search.toLowerCase()) ||
-      (u.full_name ?? "").toLowerCase().includes(search.toLowerCase())
-  );
+  useEffect(() => {
+    let filtered = users;
+    
+    if (searchQuery) {
+      filtered = filtered.filter(u => 
+        u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        u.id.includes(searchQuery)
+      );
+    }
 
-  const recentCount = users.filter(
-    (u) => new Date(u.created_at).getTime() > Date.now() - 7 * 86400000
-  ).length;
+    if (tierFilter !== "all") {
+      filtered = filtered.filter(u => (u.subscription_tier || "free") === tierFilter);
+    }
 
-  const totalWatchlists = users.reduce((s, u) => s + u.watchlistCount, 0);
-  const totalScreens = users.reduce((s, u) => s + u.screenCount, 0);
+    setFilteredUsers(filtered);
+  }, [searchQuery, tierFilter, users]);
 
-  const S = () => <Skeleton className="h-8 w-12" />;
+  const openEditDialog = (user: UserProfile) => {
+    setEditForm({
+      subscription_tier: user.subscription_tier || "free",
+      role: user.role || "user",
+      full_name: user.full_name || "",
+    });
+    setEditDialog({ open: true, user });
+  };
+
+  const handleSaveUser = async () => {
+    if (!editDialog.user) return;
+    try {
+      await updateUserProfile(editDialog.user.id, editForm);
+      await loadData();
+      setEditDialog({ open: false });
+    } catch (err) {
+      console.error("Failed to update user:", err);
+      alert("Failed to update user");
+    }
+  };
+
+  const handleSuspend = async (userId: string) => {
+    if (!confirm("Suspend this user?")) return;
+    try {
+      await suspendUser(userId);
+      await loadData();
+    } catch (err) {
+      console.error("Failed to suspend user:", err);
+      alert("Failed to suspend user");
+    }
+  };
+
+  const handleDelete = async (userId: string) => {
+    if (!confirm("PERMANENTLY delete this user account? This cannot be undone!")) return;
+    try {
+      await deleteUserAccount(userId);
+      await loadData();
+    } catch (err) {
+      console.error("Failed to delete user:", err);
+      alert("Failed to delete user");
+    }
+  };
+
+  const getTierStats = () => {
+    const free = users.filter(u => !u.subscription_tier || u.subscription_tier === "free").length;
+    const premium = users.filter(u => u.subscription_tier === "premium").length;
+    const elite = users.filter(u => u.subscription_tier === "elite").length;
+    return { free, premium, elite };
+  };
+
+  const getActivityStats = () => {
+    const activeUsers = users.filter(u => (u.screenCount + u.watchlistCount) > 0).length;
+    const onboardingCompleted = users.filter(u => u.settings?.onboarding_completed).length;
+    const withNotifications = users.filter(u => u.settings?.notification_enabled).length;
+    return { activeUsers, onboardingCompleted, withNotifications };
+  };
+
+  const getUserGrowth = () => {
+    const now = Date.now();
+    const lastWeek = users.filter(u => new Date(u.created_at).getTime() > now - 7 * 86400000).length;
+    const lastMonth = users.filter(u => new Date(u.created_at).getTime() > now - 30 * 86400000).length;
+    return { lastWeek, lastMonth };
+  };
+
+  const tierStats = getTierStats();
+  const activityStats = getActivityStats();
+  const growthStats = getUserGrowth();
+
+  const tierData = [
+    { name: "Free", value: tierStats.free, color: TIER_COLORS.free },
+    { name: "Premium", value: tierStats.premium, color: TIER_COLORS.premium },
+    { name: "Elite", value: tierStats.elite, color: TIER_COLORS.elite },
+  ];
+
+  const activityData = [
+    { name: "Total Users", count: users.length },
+    { name: "Active Users", count: activityStats.activeUsers },
+    { name: "Completed Onboarding", count: activityStats.onboardingCompleted },
+  ];
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-12 w-full" />
+        <div className="grid gap-6 md:grid-cols-3">
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+          <Skeleton className="h-32" />
+        </div>
+        <Skeleton className="h-96 w-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Users</h1>
-          <p className="text-muted-foreground">
-            Advanced user management with settings, screens & watchlists
-          </p>
+          <h1 className="text-3xl font-bold">User Management</h1>
+          <p className="text-muted-foreground">Manage users, subscriptions, and permissions</p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadUsers} disabled={loading}>
-          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        <Button onClick={loadData} variant="outline">
+          <RefreshCw className="mr-2 h-4 w-4" />
           Refresh
         </Button>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid gap-6 md:grid-cols-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Users</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>{loading ? <S /> : <div className="text-2xl font-bold">{users.length}</div>}</CardContent>
+          <CardContent>
+            <div className="text-2xl font-bold">{users.length}</div>
+            <p className="text-xs text-muted-foreground">
+              +{growthStats.lastWeek} this week
+            </p>
+          </CardContent>
         </Card>
+
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">New (7d)</CardTitle>
-            <UserCheck className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Elite Tier</CardTitle>
+            <Crown className="h-4 w-4 text-purple-500" />
           </CardHeader>
-          <CardContent>{loading ? <S /> : <div className="text-2xl font-bold">{recentCount}</div>}</CardContent>
+          <CardContent>
+            <div className="text-2xl font-bold">{tierStats.elite}</div>
+            <p className="text-xs text-muted-foreground">
+              {users.length > 0 ? Math.round((tierStats.elite / users.length) * 100) : 0}% of total
+            </p>
+          </CardContent>
         </Card>
+
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Admins</CardTitle>
-            <Shield className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+            <Activity className="h-4 w-4 text-green-500" />
           </CardHeader>
-          <CardContent>{loading ? <S /> : <div className="text-2xl font-bold">{users.filter((u) => u.role === "admin").length}</div>}</CardContent>
+          <CardContent>
+            <div className="text-2xl font-bold">{activityStats.activeUsers}</div>
+            <p className="text-xs text-muted-foreground">
+              {users.length > 0 ? Math.round((activityStats.activeUsers / users.length) * 100) : 0}% active
+            </p>
+          </CardContent>
         </Card>
+
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Premium/Pro</CardTitle>
-            <Crown className="h-4 w-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
+            <TrendingUp className="h-4 w-4 text-blue-500" />
           </CardHeader>
-          <CardContent>{loading ? <S /> : <div className="text-2xl font-bold">{users.filter((u) => u.subscription_tier === "premium" || u.subscription_tier === "pro").length}</div>}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Watchlists</CardTitle>
-            <Eye className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>{loading ? <S /> : <div className="text-2xl font-bold">{totalWatchlists}</div>}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Screens</CardTitle>
-            <LayoutGrid className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>{loading ? <S /> : <div className="text-2xl font-bold">{totalScreens}</div>}</CardContent>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {users.length > 0 ? Math.round(((tierStats.premium + tierStats.elite) / users.length) * 100) : 0}%
+            </div>
+            <p className="text-xs text-muted-foreground">Free to paid</p>
+          </CardContent>
         </Card>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="Search by email, name..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-10"
-        />
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Subscription Tier Distribution</CardTitle>
+            <CardDescription>User breakdown by tier</CardDescription>
+          </CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={tierData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={80}
+                  label={({ name, value }) => `${name}: ${value}`}
+                >
+                  {tierData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>User Activity Overview</CardTitle>
+            <CardDescription>Engagement metrics</CardDescription>
+          </CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={activityData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="#3b82f6" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* User Table */}
       <Card>
         <CardHeader>
-          <CardTitle>All Users</CardTitle>
-          <CardDescription>
-            {filtered.length} of {users.length} users &middot; Click a row for details
-          </CardDescription>
+          <CardTitle>User Database</CardTitle>
+          <CardDescription>Search, filter, and manage user accounts</CardDescription>
+          <div className="flex gap-4 mt-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name or ID..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+            <Select value={tierFilter} onValueChange={setTierFilter}>
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Tiers</SelectItem>
+                <SelectItem value="free">Free</SelectItem>
+                <SelectItem value="premium">Premium</SelectItem>
+                <SelectItem value="elite">Elite</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="space-y-2">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <Skeleton key={i} className="h-14 w-full" />
-              ))}
-            </div>
-          ) : filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">
-              {search ? "No users match your search." : "No users found."}
-            </p>
-          ) : (
-            <ScrollArea className="h-[600px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-8" />
-                    <TableHead>User</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Tier</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead className="text-center">Watchlists</TableHead>
-                    <TableHead className="text-center">Screens</TableHead>
-                    <TableHead>Joined</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((user) => {
-                    const initials = (user.display_name || user.full_name || user.email || "?")
-                      .split(/[@.\s]/)
-                      .filter(Boolean)
-                      .slice(0, 2)
-                      .map((s) => s[0]?.toUpperCase())
-                      .join("");
-                    const isExpanded = expandedUser === user.id;
-
-                    return (
-                      <>
-                        <TableRow
-                          key={user.id}
-                          className="cursor-pointer hover:bg-muted/50"
-                          onClick={() => setExpandedUser(isExpanded ? null : user.id)}
-                        >
-                          <TableCell className="w-8 pr-0">
-                            {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <Avatar className="h-8 w-8">
-                                <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="text-sm font-medium">{user.display_name || user.full_name || "—"}</p>
-                                <p className="text-xs text-muted-foreground font-mono">{user.id.slice(0, 8)}</p>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-sm">{user.email ?? "—"}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className={`capitalize text-xs ${TIER_STYLE[user.subscription_tier || "free"] ?? ""}`}>
-                              {user.subscription_tier || "free"}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            {user.role === "admin" ? (
-                              <Badge className="bg-amber-600/20 text-amber-700 dark:text-amber-400 border-0 text-xs">Admin</Badge>
-                            ) : (
-                              <span className="text-xs text-muted-foreground">User</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-center tabular-nums text-sm">{user.watchlistCount}</TableCell>
-                          <TableCell className="text-center tabular-nums text-sm">{user.screenCount}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                            {new Date(user.created_at).toLocaleDateString()}
-                          </TableCell>
-                        </TableRow>
-
-                        {/* Expanded detail row */}
-                        {isExpanded && (
-                          <TableRow key={`${user.id}-detail`} className="bg-muted/30 hover:bg-muted/30">
-                            <TableCell colSpan={8} className="p-4">
-                              <div className="grid gap-4 md:grid-cols-3">
-                                {/* Profile Details */}
-                                <div className="space-y-2">
-                                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Profile</p>
-                                  <div className="space-y-1 text-sm">
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Full Name</span><span>{user.full_name || "—"}</span></div>
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Display Name</span><span>{user.display_name || "—"}</span></div>
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Billing ID</span><span className="font-mono text-xs">{user.billing_customer_id || "—"}</span></div>
-                                    <div className="flex justify-between">
-                                      <span className="text-muted-foreground">Onboarded</span>
-                                      {user.onboarded_at ? (
-                                        <span className="flex items-center gap-1 text-emerald-500"><CheckCircle2 className="h-3 w-3" /> {new Date(user.onboarded_at).toLocaleDateString()}</span>
-                                      ) : (
-                                        <span className="text-amber-500 text-xs">Not yet</span>
-                                      )}
-                                    </div>
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Last Updated</span><span className="text-xs">{user.updated_at ? new Date(user.updated_at).toLocaleString() : "—"}</span></div>
-                                  </div>
-                                </div>
-
-                                {/* Notification Prefs */}
-                                <div className="space-y-2">
-                                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1"><Bell className="h-3 w-3" /> Notifications</p>
-                                  <div className="space-y-1 text-sm">
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Newsletter</span>{user.newsletter_opt_in ? <Badge className="bg-emerald-600/20 text-emerald-600 border-0 text-xs">On</Badge> : <span className="text-xs text-muted-foreground">Off</span>}</div>
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Announcements</span>{user.announcements_opt_in ? <Badge className="bg-emerald-600/20 text-emerald-600 border-0 text-xs">On</Badge> : <span className="text-xs text-muted-foreground">Off</span>}</div>
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Price Alerts</span>{user.alerts_opt_in ? <Badge className="bg-emerald-600/20 text-emerald-600 border-0 text-xs">On</Badge> : <span className="text-xs text-muted-foreground">Off</span>}</div>
-                                  </div>
-                                </div>
-
-                                {/* App Settings */}
-                                <div className="space-y-2">
-                                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1"><Palette className="h-3 w-3" /> App Settings</p>
-                                  {user.settings ? (
-                                    <div className="space-y-1 text-sm">
-                                      <div className="flex justify-between"><span className="text-muted-foreground">Theme</span><span className="capitalize">{user.settings.theme || "system"}</span></div>
-                                      <div className="flex justify-between"><span className="text-muted-foreground">Text Size</span><span className="capitalize">{user.settings.text_size || "medium"}</span></div>
-                                      <div className="flex justify-between"><span className="text-muted-foreground">Compact Mode</span><span>{user.settings.compact_mode ? "Yes" : "No"}</span></div>
-                                      <div className="flex justify-between"><span className="text-muted-foreground">Custom AI Keys</span><span>{user.settings.use_custom_ai_keys ? "Yes" : "No"}</span></div>
-                                      <div className="flex justify-between"><span className="text-muted-foreground">Desktop Notifs</span><span>{user.settings.desktop_notifications ? "On" : "Off"}</span></div>
-                                    </div>
-                                  ) : (
-                                    <p className="text-xs text-muted-foreground">No custom settings configured</p>
-                                  )}
-                                </div>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </ScrollArea>
-          )}
+          <div className="space-y-4">
+            {filteredUsers.map((user) => (
+              <Card key={user.id}>
+                <CardContent className="pt-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="font-semibold">{user.full_name || "Anonymous User"}</h3>
+                        <Badge variant={user.subscription_tier === "elite" ? "default" : user.subscription_tier === "premium" ? "secondary" : "outline"}>
+                          {(user.subscription_tier || "free").toUpperCase()}
+                        </Badge>
+                        {user.role === "admin" && <Badge className="bg-red-500"><Shield className="h-3 w-3 mr-1" />Admin</Badge>}
+                        {user.role === "suspended" && <Badge variant="destructive"><AlertTriangle className="h-3 w-3 mr-1" />Suspended</Badge>}
+                      </div>
+                      <div className="text-sm text-muted-foreground space-y-1">
+                        <div>ID: <code className="text-xs bg-muted px-1 py-0.5 rounded">{user.id}</code></div>
+                        <div>Joined: {new Date(user.created_at).toLocaleDateString()}</div>
+                        <div className="flex gap-4">
+                          <span>📊 {user.screenCount} screens</span>
+                          <span>⭐ {user.watchlistCount} watchlists</span>
+                          <span>{user.settings?.onboarding_completed ? "✅ Onboarded" : "❌ Not onboarded"}</span>
+                          <span>{user.settings?.notification_enabled ? "🔔 Notifications ON" : "🔕 Notifications OFF"}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => openEditDialog(user)}>
+                        <Edit className="h-4 w-4 mr-1" />
+                        Edit
+                      </Button>
+                      {user.role !== "suspended" && (
+                        <Button variant="outline" size="sm" onClick={() => handleSuspend(user.id)}>
+                          <UserX className="h-4 w-4 mr-1" />
+                          Suspend
+                        </Button>
+                      )}
+                      <Button variant="destructive" size="sm" onClick={() => handleDelete(user.id)}>
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            {filteredUsers.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                No users found matching your criteria
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
+
+      <Dialog open={editDialog.open} onOpenChange={(open) => setEditDialog({ ...editDialog, open })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit User: {editDialog.user?.full_name || "Anonymous"}</DialogTitle>
+            <DialogDescription>Update user subscription, role, and profile information</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label>Full Name</Label>
+              <Input
+                value={editForm.full_name}
+                onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+                placeholder="User's full name"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Subscription Tier</Label>
+              <Select value={editForm.subscription_tier} onValueChange={(value) => setEditForm({ ...editForm, subscription_tier: value })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">Free</SelectItem>
+                  <SelectItem value="premium">Premium ($19.99/mo)</SelectItem>
+                  <SelectItem value="elite">Elite ($49.99/mo)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Role</Label>
+              <Select value={editForm.role} onValueChange={(value) => setEditForm({ ...editForm, role: value })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialog({ open: false })}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveUser}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -37,31 +37,31 @@ export function MarketInfoBanner() {
     <>
       <button
         onClick={() => setDialogOpen(true)}
-        className="w-full bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-b border-slate-700 hover:from-slate-800 hover:via-slate-700 hover:to-slate-800 transition-all cursor-pointer group"
+        className="w-full bg-gradient-to-r from-slate-100 via-slate-50 to-slate-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 border-b border-slate-200 dark:border-slate-700 hover:from-slate-200 hover:via-slate-100 hover:to-slate-200 dark:hover:from-slate-800 dark:hover:via-slate-700 dark:hover:to-slate-800 transition-all cursor-pointer group"
       >
         <div className="relative overflow-hidden">
           <div className="animate-marquee whitespace-nowrap py-2 px-4 flex items-center gap-8 text-sm">
-            <span className="inline-flex items-center gap-2 text-slate-300 group-hover:text-white transition-colors">
+            <span className="inline-flex items-center gap-2 text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
               <Clock className="h-4 w-4" />
               <span className="font-semibold">EST:</span> {formatTime(estTime, "EST")}
             </span>
-            <span className="text-slate-400">•</span>
-            <span className="inline-flex items-center gap-2 text-slate-300 group-hover:text-white transition-colors">
+            <span className="text-slate-400 dark:text-slate-400">•</span>
+            <span className="inline-flex items-center gap-2 text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
               <Globe className="h-4 w-4" />
               <span className="font-semibold">PST:</span> {formatTime(pstTime, "PST")}
             </span>
-            <span className="text-slate-400">•</span>
-            <span className="inline-flex items-center gap-2 text-slate-300 group-hover:text-white transition-colors">
+            <span className="text-slate-400 dark:text-slate-400">•</span>
+            <span className="inline-flex items-center gap-2 text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
               <Globe className="h-4 w-4" />
               <span className="font-semibold">GMT:</span> {formatTime(gmtTime, "GMT")}
             </span>
-            <span className="text-slate-400">•</span>
-            <span className="inline-flex items-center gap-2 text-slate-300 group-hover:text-white transition-colors">
+            <span className="text-slate-400 dark:text-slate-400">•</span>
+            <span className="inline-flex items-center gap-2 text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">
               <Globe className="h-4 w-4" />
               <span className="font-semibold">UTC:</span> {formatTime(utcTime, "UTC")}
             </span>
-            <span className="text-slate-400">•</span>
-            <span className={`inline-flex items-center gap-2 font-semibold ${marketStatus.isOpen ? "text-emerald-400" : "text-amber-400"} group-hover:text-white transition-colors`}>
+            <span className="text-slate-400 dark:text-slate-400">•</span>
+            <span className={`inline-flex items-center gap-2 font-semibold ${marketStatus.isOpen ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"} group-hover:text-emerald-700 dark:group-hover:text-white transition-colors`}>
               <TrendingUp className="h-4 w-4" />
               {marketStatusText}
             </span>

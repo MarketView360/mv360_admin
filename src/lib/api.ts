@@ -45,7 +45,7 @@ export async function fetchOverviewStats() {
     totalNews: news.count ?? 0,
     adminCount: allUsers.filter((u) => u.role === "admin").length,
     premiumCount: allUsers.filter((u) => u.subscription_tier === "premium").length,
-    proCount: allUsers.filter((u) => u.subscription_tier === "pro").length,
+    eliteCount: allUsers.filter((u) => u.subscription_tier === "elite").length,
     freeCount: allUsers.filter((u) => !u.subscription_tier || u.subscription_tier === "free").length,
     newUsersThisWeek: allUsers.filter(
       (u) => u.created_at && new Date(u.created_at).getTime() > Date.now() - 7 * 86400000
@@ -107,6 +107,37 @@ export async function fetchUsers() {
     screenCount: screenCounts.get(p.id) ?? 0,
     watchlistCount: watchlistCounts.get(p.id) ?? 0,
   }));
+}
+
+export async function updateUserProfile(userId: string, updates: {
+  subscription_tier?: string;
+  role?: string;
+  full_name?: string;
+}) {
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .update(updates)
+    .eq("id", userId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function suspendUser(userId: string) {
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .update({ role: "suspended" })
+    .eq("id", userId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteUserAccount(userId: string) {
+  const { error } = await supabase.auth.admin.deleteUser(userId);
+  if (error) throw error;
 }
 
 // ─── Data Quality ─────────────────────────────────────────────────────────────
@@ -327,19 +358,19 @@ export async function fetchRevenueData() {
   const users = profiles.data ?? [];
   const free = users.filter((u) => !u.subscription_tier || u.subscription_tier === "free").length;
   const premium = users.filter((u) => u.subscription_tier === "premium").length;
-  const pro = users.filter((u) => u.subscription_tier === "pro").length;
+  const elite = users.filter((u) => u.subscription_tier === "elite").length;
   const withBilling = users.filter((u) => u.billing_customer_id).length;
 
   // Tier pricing estimates (monthly)
-  const TIER_PRICES: Record<string, number> = { free: 0, premium: 19.99, pro: 49.99 };
-  const estimatedMRR = premium * TIER_PRICES.premium + pro * TIER_PRICES.pro;
+  const TIER_PRICES: Record<string, number> = { free: 0, premium: 19.99, elite: 49.99 };
+  const estimatedMRR = premium * TIER_PRICES.premium + elite * TIER_PRICES.elite;
 
   // Signups by month for last 6 months
-  const monthlySignups: Record<string, { free: number; premium: number; pro: number }> = {};
+  const monthlySignups: Record<string, { free: number; premium: number; elite: number }> = {};
   users.forEach((u) => {
     const m = u.created_at?.slice(0, 7) ?? "";
     if (!m) return;
-    if (!monthlySignups[m]) monthlySignups[m] = { free: 0, premium: 0, pro: 0 };
+    if (!monthlySignups[m]) monthlySignups[m] = { free: 0, premium: 0, elite: 0 };
     const tier = u.subscription_tier || "free";
     if (tier in monthlySignups[m]) monthlySignups[m][tier as keyof typeof monthlySignups[typeof m]]++;
   });
@@ -348,8 +379,8 @@ export async function fetchRevenueData() {
       month,
       free: counts.free,
       premium: counts.premium,
-      pro: counts.pro,
-      estimatedRevenue: counts.premium * TIER_PRICES.premium + counts.pro * TIER_PRICES.pro,
+      elite: counts.elite,
+      estimatedRevenue: counts.premium * TIER_PRICES.premium + counts.elite * TIER_PRICES.elite,
     }))
     .sort((a, b) => a.month.localeCompare(b.month))
     .slice(-6);
@@ -358,12 +389,12 @@ export async function fetchRevenueData() {
     totalUsers: users.length,
     free,
     premium,
-    pro,
+    elite,
     withBilling,
     estimatedMRR,
     newThisWeek: weekAgo.count ?? 0,
     newThisMonth: monthAgo.count ?? 0,
-    conversionRate: users.length > 0 ? Math.round(((premium + pro) / users.length) * 100) : 0,
+    conversionRate: users.length > 0 ? Math.round(((premium + elite) / users.length) * 100) : 0,
     revenueTimeline,
   };
 }

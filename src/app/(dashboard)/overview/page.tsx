@@ -51,7 +51,7 @@ interface OverviewStats {
   totalNews: number;
   adminCount: number;
   premiumCount: number;
-  proCount: number;
+  eliteCount: number;
   freeCount: number;
   newUsersThisWeek: number;
   recentSyncs: SyncLog[];
@@ -166,8 +166,8 @@ export default function OverviewPage() {
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/40 text-amber-600 dark:text-amber-400">
                     {stats?.premiumCount} premium
                   </Badge>
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/40 text-emerald-600 dark:text-emerald-400">
-                    {stats?.proCount} pro
+                  <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-purple-500/40 text-purple-600 dark:text-purple-400">
+                    {stats?.eliteCount} elite
                   </Badge>
                 </div>
               </>
