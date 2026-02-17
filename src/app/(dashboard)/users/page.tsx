@@ -10,8 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Crown, Shield, Search, Edit, Trash2, RefreshCw, TrendingUp, Activity, AlertTriangle, ChevronDown, ChevronRight, DollarSign, Mail, Bell, Calendar, UserX, Ban } from "lucide-react";
+import { Users, Crown, Shield, Search, Edit, Trash2, RefreshCw, TrendingUp, Activity, AlertTriangle, ChevronDown, ChevronRight, DollarSign, Mail, Bell, Calendar, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette } from "lucide-react";
 import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend, deleteUserAccount } from "@/lib/api";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
@@ -46,18 +47,61 @@ interface UserProfile {
 const TIER_PRICES = { free: 0, premium: 19.99, max: 49.99 };
 const TIER_COLORS = { free: "#94a3b8", premium: "#3b82f6", max: "#8b5cf6" };
 
+type SortField = "name" | "email" | "tier" | "created" | "lastActivity" | "payment";
+type SortDirection = "asc" | "desc";
+type ColorTheme = "default" | "warm" | "cool" | "vibrant";
+
+const COLOR_THEMES = {
+  default: {
+    free: "bg-slate-500",
+    premium: "bg-blue-500",
+    max: "bg-purple-500",
+    active: "bg-green-500",
+    warning: "bg-yellow-500",
+    danger: "bg-red-500",
+  },
+  warm: {
+    free: "bg-orange-400",
+    premium: "bg-amber-500",
+    max: "bg-rose-500",
+    active: "bg-emerald-500",
+    warning: "bg-yellow-500",
+    danger: "bg-red-600",
+  },
+  cool: {
+    free: "bg-cyan-400",
+    premium: "bg-sky-500",
+    max: "bg-indigo-500",
+    active: "bg-teal-500",
+    warning: "bg-amber-500",
+    danger: "bg-rose-500",
+  },
+  vibrant: {
+    free: "bg-lime-500",
+    premium: "bg-fuchsia-500",
+    max: "bg-violet-600",
+    active: "bg-green-600",
+    warning: "bg-orange-500",
+    danger: "bg-red-600",
+  },
+};
+
 export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [tierFilter, setTierFilter] = useState<string>("all");
-  const [activityFilter, setActivityFilter] = useState<string>("all");
-  const [suspendFilter, setSuspendFilter] = useState<string>("all");
+  const [regexMode, setRegexMode] = useState(false);
+  const [regexError, setRegexError] = useState("");
+  const [sortField, setSortField] = useState<SortField>("created");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
-  const [compactMode, setCompactMode] = useState(true);
+  const [compactView, setCompactView] = useState(true);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [colorTheme, setColorTheme] = useState<ColorTheme>("default");
   
   const [editDialog, setEditDialog] = useState<{ open: boolean; user?: UserProfile }>({ open: false });
+  const [suspendDialog, setSuspendDialog] = useState<{ open: boolean; type: "temp" | "perm" | null; user?: UserProfile; action: "suspend" | "restore" }>({ open: false, type: null, action: "suspend" });
   const [editForm, setEditForm] = useState({
     subscription_tier: "",
     role: "",
@@ -68,12 +112,23 @@ export default function UsersPage() {
     events_and_promotions_opt_in: false,
   });
 
+  // Advanced filters
+  const [tierFilter, setTierFilter] = useState<string>("all");
+  const [paymentFilter, setPaymentFilter] = useState<string>("all");
+  const [activityFilter, setActivityFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("users-color-theme") as ColorTheme;
+    if (savedTheme) setColorTheme(savedTheme);
+  }, []);
+
   const loadData = async () => {
     setLoading(true);
     try {
       const data = await fetchUsers();
       setUsers(data);
-      setFilteredUsers(data);
+      applyFiltersAndSort(data);
     } catch (err) {
       console.error("Failed to load users:", err);
     } finally {
@@ -86,21 +141,53 @@ export default function UsersPage() {
   }, []);
 
   useEffect(() => {
-    let filtered = users;
+    applyFiltersAndSort(users);
+  }, [searchQuery, regexMode, tierFilter, paymentFilter, activityFilter, statusFilter, sortField, sortDirection]);
+
+  const applyFiltersAndSort = (data: UserProfile[]) => {
+    let filtered = [...data];
     
+    // Search filter
     if (searchQuery) {
-      filtered = filtered.filter(u => 
-        u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.display_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        u.id.includes(searchQuery)
-      );
+      if (regexMode) {
+        try {
+          const regex = new RegExp(searchQuery, "i");
+          setRegexError("");
+          filtered = filtered.filter(u => 
+            regex.test(u.full_name || "") ||
+            regex.test(u.email || "") ||
+            regex.test(u.display_name || "") ||
+            regex.test(u.id)
+          );
+        } catch (err) {
+          setRegexError("Invalid regex pattern");
+        }
+      } else {
+        const query = searchQuery.toLowerCase();
+        filtered = filtered.filter(u => 
+          u.full_name?.toLowerCase().includes(query) ||
+          u.email?.toLowerCase().includes(query) ||
+          u.display_name?.toLowerCase().includes(query) ||
+          u.id.toLowerCase().includes(query)
+        );
+      }
     }
 
+    // Tier filter
     if (tierFilter !== "all") {
       filtered = filtered.filter(u => (u.subscription_tier || "free") === tierFilter);
     }
 
+    // Payment filter
+    if (paymentFilter === "paying") {
+      filtered = filtered.filter(u => u.subscription_tier && u.subscription_tier !== "free");
+    } else if (paymentFilter === "free") {
+      filtered = filtered.filter(u => !u.subscription_tier || u.subscription_tier === "free");
+    } else if (paymentFilter === "with-billing") {
+      filtered = filtered.filter(u => u.billing_customer_id);
+    }
+
+    // Activity filter
     if (activityFilter === "active") {
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       filtered = filtered.filter(u => u.lastActivity && u.lastActivity > thirtyDaysAgo);
@@ -109,14 +196,64 @@ export default function UsersPage() {
       filtered = filtered.filter(u => !u.lastActivity || u.lastActivity <= thirtyDaysAgo);
     }
 
-    if (suspendFilter === "suspended") {
+    // Status filter
+    if (statusFilter === "suspended") {
       filtered = filtered.filter(u => u.temp_suspend || u.perm_suspend);
-    } else if (suspendFilter === "active") {
+    } else if (statusFilter === "active") {
       filtered = filtered.filter(u => !u.temp_suspend && !u.perm_suspend);
+    } else if (statusFilter === "temp-suspended") {
+      filtered = filtered.filter(u => u.temp_suspend);
+    } else if (statusFilter === "perm-suspended") {
+      filtered = filtered.filter(u => u.perm_suspend);
     }
 
+    // Sort
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case "name":
+          comparison = (a.full_name || a.display_name || "").localeCompare(b.full_name || b.display_name || "");
+          break;
+        case "email":
+          comparison = (a.email || "").localeCompare(b.email || "");
+          break;
+        case "tier":
+          const tierOrder = { free: 0, premium: 1, max: 2 };
+          comparison = (tierOrder[a.subscription_tier as keyof typeof tierOrder] || 0) - (tierOrder[b.subscription_tier as keyof typeof tierOrder] || 0);
+          break;
+        case "created":
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+        case "lastActivity":
+          const aTime = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+          const bTime = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+          comparison = aTime - bTime;
+          break;
+        case "payment":
+          const aPrice = TIER_PRICES[a.subscription_tier as keyof typeof TIER_PRICES] || 0;
+          const bPrice = TIER_PRICES[b.subscription_tier as keyof typeof TIER_PRICES] || 0;
+          comparison = aPrice - bPrice;
+          break;
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+
     setFilteredUsers(filtered);
-  }, [searchQuery, tierFilter, activityFilter, suspendFilter, users]);
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("desc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-50" />;
+    return sortDirection === "asc" ? <ArrowUp className="h-3 w-3 ml-1" /> : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
 
   const openEditDialog = (user: UserProfile) => {
     setEditForm({
@@ -143,27 +280,27 @@ export default function UsersPage() {
     }
   };
 
-  const handleToggleTempSuspend = async (userId: string, suspend: boolean) => {
-    try {
-      await toggleTempSuspend(userId, suspend);
-      await loadData();
-    } catch (err) {
-      console.error("Failed to toggle suspension:", err);
-    }
+  const openSuspendDialog = (user: UserProfile, type: "temp" | "perm", action: "suspend" | "restore") => {
+    setSuspendDialog({ open: true, type, user, action });
   };
 
-  const handleTogglePermSuspend = async (userId: string, suspend: boolean) => {
-    if (!confirm(`${suspend ? "PERMANENTLY suspend" : "Remove permanent suspension from"} this user?`)) return;
+  const handleSuspendConfirm = async () => {
+    if (!suspendDialog.user || !suspendDialog.type) return;
     try {
-      await togglePermSuspend(userId, suspend);
+      if (suspendDialog.type === "temp") {
+        await toggleTempSuspend(suspendDialog.user.id, suspendDialog.action === "suspend");
+      } else {
+        await togglePermSuspend(suspendDialog.user.id, suspendDialog.action === "suspend");
+      }
       await loadData();
+      setSuspendDialog({ open: false, type: null, action: "suspend" });
     } catch (err) {
-      console.error("Failed to toggle permanent suspension:", err);
+      console.error("Failed to toggle suspension:", err);
+      alert("Failed to update suspension status");
     }
   };
 
   const handleDelete = async (userId: string) => {
-    if (!confirm("PERMANENTLY delete this user account? This cannot be undone!")) return;
     try {
       await deleteUserAccount(userId);
       await loadData();
@@ -181,6 +318,21 @@ export default function UsersPage() {
       newExpanded.add(userId);
     }
     setExpandedRows(newExpanded);
+  };
+
+  const copyToClipboard = async (text: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
+
+  const handleThemeChange = (theme: ColorTheme) => {
+    setColorTheme(theme);
+    localStorage.setItem("users-color-theme", theme);
   };
 
   const getTierStats = () => {
@@ -223,9 +375,17 @@ export default function UsersPage() {
     return `${Math.floor(days / 30)} months ago`;
   };
 
+  const applyQuickFilter = (filter: { tier?: string; payment?: string; activity?: string; status?: string }) => {
+    if (filter.tier) setTierFilter(filter.tier);
+    if (filter.payment) setPaymentFilter(filter.payment);
+    if (filter.activity) setActivityFilter(filter.activity);
+    if (filter.status) setStatusFilter(filter.status);
+  };
+
   const tierStats = getTierStats();
   const activityStats = getActivityStats();
   const growthStats = getUserGrowth();
+  const theme = COLOR_THEMES[colorTheme];
 
   const tierData = [
     { name: "Free", value: tierStats.free, color: TIER_COLORS.free },
@@ -256,12 +416,30 @@ export default function UsersPage() {
           <p className="text-muted-foreground">Advanced user management, subscriptions, and analytics</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setCompactMode(!compactMode)}>
-            {compactMode ? "Expanded View" : "Compact View"}
+          <Select value={colorTheme} onValueChange={(v) => handleThemeChange(v as ColorTheme)}>
+            <SelectTrigger className="w-40">
+              <Palette className="h-4 w-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Default</SelectItem>
+              <SelectItem value="warm">Warm</SelectItem>
+              <SelectItem value="cool">Cool</SelectItem>
+              <SelectItem value="vibrant">Vibrant</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={() => setCompactView(!compactView)}>
+            {compactView ? "Expand All" : "Collapse All"}
           </Button>
           <Button variant="outline" onClick={loadData}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
+          </Button>
+          <Button variant="outline" asChild>
+            <a href="https://app.brevo.com/contact/list" target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Brevo Contacts
+            </a>
           </Button>
         </div>
       </div>
@@ -281,7 +459,7 @@ export default function UsersPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active (30d)</CardTitle>
-            <Activity className="h-4 w-4 text-green-500" />
+            <Activity className={`h-4 w-4 ${theme.active}`} />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{activityStats.activeUsers}</div>
@@ -294,7 +472,7 @@ export default function UsersPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Paying Users</CardTitle>
-            <DollarSign className="h-4 w-4 text-green-500" />
+            <DollarSign className={`h-4 w-4 ${theme.active}`} />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{tierStats.premium + tierStats.max}</div>
@@ -348,88 +526,139 @@ export default function UsersPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Key Metrics</CardTitle>
-            <CardDescription>Important user statistics</CardDescription>
+            <CardTitle>Quick Filters</CardTitle>
+            <CardDescription>Common filter combinations</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">With Billing</span>
-              <Badge>{activityStats.withPayment} users</Badge>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Suspended</span>
-              <Badge variant="destructive">{activityStats.suspended} users</Badge>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">New This Month</span>
-              <Badge variant="outline">{growthStats.lastMonth} users</Badge>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium">Max Tier Users</span>
-              <Badge className="bg-purple-500">{tierStats.max} users</Badge>
-            </div>
+          <CardContent className="space-y-2">
+            <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => applyQuickFilter({ payment: "paying", activity: "active" })}>
+              💰 Active Paying Users
+            </Button>
+            <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => applyQuickFilter({ tier: "max", activity: "active" })}>
+              👑 Active Max Tier Users
+            </Button>
+            <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => applyQuickFilter({ payment: "free", activity: "active" })}>
+              🎯 Active Free Users (Conversion Target)
+            </Button>
+            <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => applyQuickFilter({ payment: "paying", activity: "inactive" })}>
+              ⚠️ Inactive Paying Users (Churn Risk)
+            </Button>
+            <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => applyQuickFilter({ status: "suspended" })}>
+              🚫 All Suspended Users
+            </Button>
           </CardContent>
         </Card>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>User Database</CardTitle>
-          <CardDescription>Advanced filtering and user management</CardDescription>
-          <div className="grid gap-4 md:grid-cols-4 mt-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search users..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+          <CardTitle>Advanced Search & Filters</CardTitle>
+          <CardDescription>Regex search and multi-dimensional filtering</CardDescription>
+          <div className="space-y-4 mt-4">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={regexMode ? "Regex pattern (e.g., ^Har.*)" : "Search users..."}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Button
+                variant={regexMode ? "default" : "outline"}
+                onClick={() => setRegexMode(!regexMode)}
+              >
+                {regexMode ? "Regex ON" : "Regex OFF"}
+              </Button>
             </div>
-            <Select value={tierFilter} onValueChange={setTierFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Tiers" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Tiers</SelectItem>
-                <SelectItem value="free">Free</SelectItem>
-                <SelectItem value="premium">Premium</SelectItem>
-                <SelectItem value="max">Max</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={activityFilter} onValueChange={setActivityFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Activity" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Activity</SelectItem>
-                <SelectItem value="active">Active (30d)</SelectItem>
-                <SelectItem value="inactive">Inactive (30d+)</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={suspendFilter} onValueChange={setSuspendFilter}>
-              <SelectTrigger>
-                <SelectValue placeholder="All Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="suspended">Suspended</SelectItem>
-              </SelectContent>
-            </Select>
+            {regexError && <p className="text-xs text-red-500">{regexError}</p>}
+            
+            <div className="grid gap-3 md:grid-cols-4">
+              <div>
+                <Label className="text-xs">Subscription Tier</Label>
+                <Select value={tierFilter} onValueChange={setTierFilter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Tiers</SelectItem>
+                    <SelectItem value="free">Free</SelectItem>
+                    <SelectItem value="premium">Premium</SelectItem>
+                    <SelectItem value="max">Max</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Payment Status</Label>
+                <Select value={paymentFilter} onValueChange={setPaymentFilter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Payment Status</SelectItem>
+                    <SelectItem value="paying">Paying Users</SelectItem>
+                    <SelectItem value="free">Free Users</SelectItem>
+                    <SelectItem value="with-billing">With Billing ID</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Activity</Label>
+                <Select value={activityFilter} onValueChange={setActivityFilter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Activity</SelectItem>
+                    <SelectItem value="active">Active (30d)</SelectItem>
+                    <SelectItem value="inactive">Inactive (30d+)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Account Status</Label>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="suspended">All Suspended</SelectItem>
+                    <SelectItem value="temp-suspended">Temp Suspended</SelectItem>
+                    <SelectItem value="perm-suspended">Perm Suspended</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
+          <div className="text-sm text-muted-foreground mb-3">
+            Showing {filteredUsers.length} of {users.length} users
+          </div>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[30px]"></TableHead>
-                  <TableHead>User</TableHead>
-                  <TableHead>Tier</TableHead>
-                  {!compactMode && <TableHead>Payment</TableHead>}
-                  {!compactMode && <TableHead>Duration</TableHead>}
-                  <TableHead>Last Active</TableHead>
+                  <TableHead className="w-10"></TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("name")}>
+                    <div className="flex items-center">Name <SortIcon field="name" /></div>
+                  </TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("email")}>
+                    <div className="flex items-center">Email <SortIcon field="email" /></div>
+                  </TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("tier")}>
+                    <div className="flex items-center">Tier <SortIcon field="tier" /></div>
+                  </TableHead>
+                  {!compactView && (
+                    <TableHead className="cursor-pointer" onClick={() => handleSort("payment")}>
+                      <div className="flex items-center">Payment <SortIcon field="payment" /></div>
+                    </TableHead>
+                  )}
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("lastActivity")}>
+                    <div className="flex items-center">Last Active <SortIcon field="lastActivity" /></div>
+                  </TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -437,29 +666,33 @@ export default function UsersPage() {
               <TableBody>
                 {filteredUsers.map((user) => (
                   <>
-                    <TableRow key={user.id} className="cursor-pointer hover:bg-muted/50">
-                      <TableCell onClick={() => toggleRow(user.id)}>
-                        {expandedRows.has(user.id) ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
+                    <TableRow key={user.id} className="hover:bg-muted/50">
+                      <TableCell>
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => toggleRow(user.id)}>
+                          {expandedRows.has(user.id) ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </Button>
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <div className="font-medium">{user.full_name || user.display_name || "Anonymous"}</div>
-                          <div className="text-xs text-muted-foreground">{user.email}</div>
-                        </div>
+                        <div className="font-medium">{user.full_name || user.display_name || "Anonymous"}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm text-muted-foreground">{user.email}</div>
                       </TableCell>
                       <TableCell>
                         <Badge
-                          variant={(user.subscription_tier || "free") === "max" ? "default" : (user.subscription_tier === "premium" ? "secondary" : "outline")}
-                          className={(user.subscription_tier || "free") === "max" ? "bg-purple-500" : ""}
+                          className={
+                            (user.subscription_tier || "free") === "max" ? theme.max :
+                            user.subscription_tier === "premium" ? theme.premium : theme.free
+                          }
                         >
                           {(user.subscription_tier || "free").toUpperCase()}
                         </Badge>
                       </TableCell>
-                      {!compactMode && (
+                      {!compactView && (
                         <TableCell>
                           {(user.subscription_tier && user.subscription_tier !== "free") ? (
                             <span className="text-sm font-medium">
@@ -470,19 +703,14 @@ export default function UsersPage() {
                           )}
                         </TableCell>
                       )}
-                      {!compactMode && (
-                        <TableCell>
-                          <span className="text-sm">{getSubscriptionDuration(user.created_at, user.subscription_tier || "free")}</span>
-                        </TableCell>
-                      )}
                       <TableCell>
                         <span className="text-sm">{getLastActivityText(user.lastActivity)}</span>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1">
-                          {user.role === "admin" && <Badge className="bg-red-500 text-xs"><Shield className="h-3 w-3" /></Badge>}
-                          {user.perm_suspend && <Badge variant="destructive" className="text-xs"><Ban className="h-3 w-3" /></Badge>}
-                          {user.temp_suspend && <Badge variant="outline" className="text-xs"><UserX className="h-3 w-3" /></Badge>}
+                          {user.role === "admin" && <Badge className={theme.danger}><Shield className="h-3 w-3" /></Badge>}
+                          {user.perm_suspend && <Badge className={theme.danger}><Ban className="h-3 w-3" /></Badge>}
+                          {user.temp_suspend && <Badge className={theme.warning}><UserX className="h-3 w-3" /></Badge>}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -490,20 +718,27 @@ export default function UsersPage() {
                           <Button variant="ghost" size="sm" onClick={() => openEditDialog(user)}>
                             <Edit className="h-3 w-3" />
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleDelete(user.id)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
                     {expandedRows.has(user.id) && (
                       <TableRow key={`${user.id}-expanded`}>
-                        <TableCell colSpan={compactMode ? 6 : 8} className="bg-muted/30">
+                        <TableCell colSpan={compactView ? 7 : 8} className="bg-muted/30">
                           <div className="p-4 space-y-4">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                               <div>
                                 <div className="font-semibold text-xs text-muted-foreground mb-1">User ID</div>
-                                <code className="text-xs bg-muted px-2 py-1 rounded">{user.id.slice(0, 8)}...</code>
+                                <div className="flex items-center gap-2">
+                                  <code className="text-xs bg-muted px-2 py-1 rounded">{user.id}</code>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-6 p-0"
+                                    onClick={() => copyToClipboard(user.id, user.id)}
+                                  >
+                                    {copiedId === user.id ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                  </Button>
+                                </div>
                               </div>
                               <div>
                                 <div className="font-semibold text-xs text-muted-foreground mb-1">Joined</div>
@@ -515,9 +750,45 @@ export default function UsersPage() {
                               </div>
                               <div>
                                 <div className="font-semibold text-xs text-muted-foreground mb-1">Billing ID</div>
-                                <div className="text-xs">{user.billing_customer_id || "None"}</div>
+                                <div className="flex items-center gap-2">
+                                  {user.billing_customer_id ? (
+                                    <>
+                                      <code className="text-xs bg-muted px-2 py-1 rounded">{user.billing_customer_id}</code>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 w-6 p-0"
+                                        onClick={() => copyToClipboard(user.billing_customer_id!, `billing-${user.id}`)}
+                                      >
+                                        {copiedId === `billing-${user.id}` ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">None</span>
+                                  )}
+                                </div>
                               </div>
                             </div>
+
+                            {(user.subscription_tier && user.subscription_tier !== "free") && (
+                              <div className="border-t pt-3">
+                                <div className="font-semibold text-sm mb-2">Subscription Info</div>
+                                <div className="grid grid-cols-3 gap-3 text-sm">
+                                  <div>
+                                    <span className="text-muted-foreground">Duration: </span>
+                                    {getSubscriptionDuration(user.created_at, user.subscription_tier)}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Monthly: </span>
+                                    ${TIER_PRICES[user.subscription_tier as keyof typeof TIER_PRICES]}/mo
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">Tier: </span>
+                                    {user.subscription_tier.toUpperCase()}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
 
                             <div className="border-t pt-3">
                               <div className="font-semibold text-sm mb-2 flex items-center gap-2">
@@ -526,19 +797,19 @@ export default function UsersPage() {
                               </div>
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <div className="flex items-center gap-2">
-                                  <div className={`h-2 w-2 rounded-full ${user.newsletter_opt_in ? "bg-green-500" : "bg-gray-300"}`} />
+                                  <div className={`h-2 w-2 rounded-full ${user.newsletter_opt_in ? theme.active : "bg-gray-300"}`} />
                                   <span className="text-sm">Newsletter</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <div className={`h-2 w-2 rounded-full ${user.announcements_opt_in ? "bg-green-500" : "bg-gray-300"}`} />
+                                  <div className={`h-2 w-2 rounded-full ${user.announcements_opt_in ? theme.active : "bg-gray-300"}`} />
                                   <span className="text-sm">Announcements</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <div className={`h-2 w-2 rounded-full ${user.alerts_opt_in ? "bg-green-500" : "bg-gray-300"}`} />
+                                  <div className={`h-2 w-2 rounded-full ${user.alerts_opt_in ? theme.active : "bg-gray-300"}`} />
                                   <span className="text-sm">Alerts</span>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <div className={`h-2 w-2 rounded-full ${user.events_and_promotions_opt_in ? "bg-green-500" : "bg-gray-300"}`} />
+                                  <div className={`h-2 w-2 rounded-full ${user.events_and_promotions_opt_in ? theme.active : "bg-gray-300"}`} />
                                   <span className="text-sm">Events & Promos</span>
                                 </div>
                               </div>
@@ -547,23 +818,23 @@ export default function UsersPage() {
                             <div className="flex gap-2 border-t pt-3">
                               {!user.temp_suspend && !user.perm_suspend && (
                                 <>
-                                  <Button variant="outline" size="sm" onClick={() => handleToggleTempSuspend(user.id, true)}>
+                                  <Button variant="outline" size="sm" onClick={() => openSuspendDialog(user, "temp", "suspend")}>
                                     <UserX className="h-3 w-3 mr-1" />
                                     Temp Suspend
                                   </Button>
-                                  <Button variant="destructive" size="sm" onClick={() => handleTogglePermSuspend(user.id, true)}>
+                                  <Button variant="destructive" size="sm" onClick={() => openSuspendDialog(user, "perm", "suspend")}>
                                     <Ban className="h-3 w-3 mr-1" />
                                     Perm Suspend
                                   </Button>
                                 </>
                               )}
                               {user.temp_suspend && (
-                                <Button variant="outline" size="sm" onClick={() => handleToggleTempSuspend(user.id, false)}>
+                                <Button variant="outline" size="sm" onClick={() => openSuspendDialog(user, "temp", "restore")}>
                                   Lift Temp Suspension
                                 </Button>
                               )}
                               {user.perm_suspend && (
-                                <Button variant="destructive" size="sm" onClick={() => handleTogglePermSuspend(user.id, false)}>
+                                <Button variant="destructive" size="sm" onClick={() => openSuspendDialog(user, "perm", "restore")}>
                                   Lift Perm Suspension
                                 </Button>
                               )}
@@ -671,6 +942,52 @@ export default function UsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={suspendDialog.open} onOpenChange={(open) => setSuspendDialog({ ...suspendDialog, open })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {suspendDialog.action === "suspend" ? "Suspend User Account" : "Restore User Account"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {suspendDialog.action === "suspend" ? (
+                <>
+                  {suspendDialog.type === "perm" ? (
+                    <div className="space-y-2">
+                      <p className="font-semibold text-red-600">⚠️ PERMANENT SUSPENSION</p>
+                      <p>This will <strong>permanently suspend</strong> the account for:</p>
+                      <p className="font-medium">{suspendDialog.user?.email}</p>
+                      <p className="text-sm">This is a severe action. The user will be unable to access the platform until manually restored by an admin.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="font-semibold text-yellow-600">⚠️ TEMPORARY SUSPENSION</p>
+                      <p>This will <strong>temporarily suspend</strong> the account for:</p>
+                      <p className="font-medium">{suspendDialog.user?.email}</p>
+                      <p className="text-sm">This is a reversible action. You can lift the suspension at any time.</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p>Are you sure you want to restore access for:</p>
+                  <p className="font-medium">{suspendDialog.user?.email}</p>
+                  <p className="text-sm">The user will regain full access to their account.</p>
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleSuspendConfirm}
+              className={suspendDialog.action === "suspend" && suspendDialog.type === "perm" ? "bg-red-600 hover:bg-red-700" : ""}
+            >
+              {suspendDialog.action === "suspend" ? "Confirm Suspension" : "Confirm Restore"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
