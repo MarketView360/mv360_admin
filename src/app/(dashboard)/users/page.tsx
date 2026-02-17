@@ -12,9 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Crown, Shield, Search, Edit, Trash2, RefreshCw, TrendingUp, Activity, AlertTriangle, ChevronDown, ChevronRight, DollarSign, Mail, Bell, Calendar, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette } from "lucide-react";
-import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend, deleteUserAccount } from "@/lib/api";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp } from "lucide-react";
+import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend } from "@/lib/api";
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
 
 interface UserProfile {
   id: string;
@@ -32,8 +32,8 @@ interface UserProfile {
   events_and_promotions_opt_in: boolean;
   temp_suspend: boolean | null;
   perm_suspend: boolean | null;
-  metadata: any;
-  preferences: any;
+  metadata: Record<string, unknown> | null;
+  preferences: Record<string, unknown> | null;
   settings: {
     theme?: string;
     desktop_notifications?: boolean;
@@ -99,13 +99,18 @@ export default function UsersPage() {
   const [compactView, setCompactView] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [colorTheme, setColorTheme] = useState<ColorTheme>("default");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   
   const [editDialog, setEditDialog] = useState<{ open: boolean; user?: UserProfile }>({ open: false });
+  const [confirmEditDialog, setConfirmEditDialog] = useState(false);
   const [suspendDialog, setSuspendDialog] = useState<{ open: boolean; type: "temp" | "perm" | null; user?: UserProfile; action: "suspend" | "restore" }>({ open: false, type: null, action: "suspend" });
   const [editForm, setEditForm] = useState({
     subscription_tier: "",
     role: "",
     full_name: "",
+    display_name: "",
+    email: "",
+    billing_customer_id: "",
     newsletter_opt_in: false,
     announcements_opt_in: false,
     alerts_opt_in: false,
@@ -138,11 +143,13 @@ export default function UsersPage() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     applyFiltersAndSort(users);
-  }, [searchQuery, regexMode, tierFilter, paymentFilter, activityFilter, statusFilter, sortField, sortDirection]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, regexMode, tierFilter, paymentFilter, activityFilter, statusFilter, sortField, sortDirection, users]);
 
   const applyFiltersAndSort = (data: UserProfile[]) => {
     let filtered = [...data];
@@ -159,7 +166,7 @@ export default function UsersPage() {
             regex.test(u.display_name || "") ||
             regex.test(u.id)
           );
-        } catch (err) {
+        } catch {
           setRegexError("Invalid regex pattern");
         }
       } else {
@@ -260,23 +267,29 @@ export default function UsersPage() {
       subscription_tier: user.subscription_tier || "free",
       role: user.role || "user",
       full_name: user.full_name || "",
+      display_name: user.display_name || "",
+      email: user.email || "",
+      billing_customer_id: user.billing_customer_id || "",
       newsletter_opt_in: user.newsletter_opt_in,
       announcements_opt_in: user.announcements_opt_in,
       alerts_opt_in: user.alerts_opt_in,
       events_and_promotions_opt_in: user.events_and_promotions_opt_in,
     });
+    setShowAdvanced(false);
     setEditDialog({ open: true, user });
   };
 
   const handleSaveUser = async () => {
     if (!editDialog.user) return;
+    setConfirmEditDialog(false);
+    setEditDialog({ open: false });
+    
     try {
       await updateUserProfile(editDialog.user.id, editForm);
       await loadData();
-      setEditDialog({ open: false });
     } catch (err) {
       console.error("Failed to update user:", err);
-      alert("Failed to update user");
+      alert("Failed to update user. Please try again.");
     }
   };
 
@@ -286,6 +299,8 @@ export default function UsersPage() {
 
   const handleSuspendConfirm = async () => {
     if (!suspendDialog.user || !suspendDialog.type) return;
+    setSuspendDialog({ open: false, type: null, action: "suspend" });
+    
     try {
       if (suspendDialog.type === "temp") {
         await toggleTempSuspend(suspendDialog.user.id, suspendDialog.action === "suspend");
@@ -293,20 +308,9 @@ export default function UsersPage() {
         await togglePermSuspend(suspendDialog.user.id, suspendDialog.action === "suspend");
       }
       await loadData();
-      setSuspendDialog({ open: false, type: null, action: "suspend" });
     } catch (err) {
       console.error("Failed to toggle suspension:", err);
-      alert("Failed to update suspension status");
-    }
-  };
-
-  const handleDelete = async (userId: string) => {
-    try {
-      await deleteUserAccount(userId);
-      await loadData();
-    } catch (err) {
-      console.error("Failed to delete user:", err);
-      alert("Failed to delete user");
+      alert("Failed to update suspension status. Please try again.");
     }
   };
 
@@ -659,7 +663,9 @@ export default function UsersPage() {
                   <TableHead className="cursor-pointer" onClick={() => handleSort("lastActivity")}>
                     <div className="flex items-center">Last Active <SortIcon field="lastActivity" /></div>
                   </TableHead>
-                  <TableHead>Status</TableHead>
+                  <TableHead className="cursor-pointer" onClick={() => handleSort("created")}>
+                    <div className="flex items-center">Joined <SortIcon field="created" /></div>
+                  </TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -707,10 +713,8 @@ export default function UsersPage() {
                         <span className="text-sm">{getLastActivityText(user.lastActivity)}</span>
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-1">
-                          {user.role === "admin" && <Badge className={theme.danger}><Shield className="h-3 w-3" /></Badge>}
-                          {user.perm_suspend && <Badge className={theme.danger}><Ban className="h-3 w-3" /></Badge>}
-                          {user.temp_suspend && <Badge className={theme.warning}><UserX className="h-3 w-3" /></Badge>}
+                        <div className="text-sm">
+                          {new Date(user.created_at).toLocaleDateString()}
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
@@ -815,6 +819,16 @@ export default function UsersPage() {
                               </div>
                             </div>
 
+                            <div className="border-t pt-3">
+                              <div className="font-semibold text-sm mb-2">Account Status</div>
+                              <div className="flex gap-2 flex-wrap">
+                                {user.role === "admin" && <Badge className={theme.danger}>Admin</Badge>}
+                                {user.perm_suspend && <Badge className={theme.danger}><Ban className="h-3 w-3 mr-1" />Perm Suspended</Badge>}
+                                {user.temp_suspend && <Badge className={theme.warning}><UserX className="h-3 w-3 mr-1" />Temp Suspended</Badge>}
+                                {!user.temp_suspend && !user.perm_suspend && <Badge className={theme.active}>Active</Badge>}
+                              </div>
+                            </div>
+
                             <div className="flex gap-2 border-t pt-3">
                               {!user.temp_suspend && !user.perm_suspend && (
                                 <>
@@ -857,10 +871,10 @@ export default function UsersPage() {
       </Card>
 
       <Dialog open={editDialog.open} onOpenChange={(open) => setEditDialog({ ...editDialog, open })}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit User: {editDialog.user?.full_name || editDialog.user?.email}</DialogTitle>
-            <DialogDescription>Update user subscription, role, and communication preferences</DialogDescription>
+            <DialogDescription>Update user profile, subscription, and preferences</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
@@ -896,6 +910,7 @@ export default function UsersPage() {
                 </SelectContent>
               </Select>
             </div>
+            
             <div className="border-t pt-4 space-y-3">
               <Label className="text-sm font-semibold">Communication Preferences</Label>
               <div className="flex items-center justify-between">
@@ -931,19 +946,82 @@ export default function UsersPage() {
                 />
               </div>
             </div>
+
+            <div className="border-t pt-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="w-full justify-between"
+              >
+                <span className="font-semibold">Advanced Settings</span>
+                {showAdvanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+              {showAdvanced && (
+                <div className="mt-4 space-y-3 p-4 bg-muted/50 rounded-md">
+                  <div className="grid gap-2">
+                    <Label className="text-xs text-muted-foreground">Display Name</Label>
+                    <Input
+                      value={editForm.display_name}
+                      onChange={(e) => setEditForm({ ...editForm, display_name: e.target.value })}
+                      placeholder="Display name"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label className="text-xs text-muted-foreground">Email</Label>
+                    <Input
+                      value={editForm.email}
+                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                      placeholder="Email address"
+                      type="email"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label className="text-xs text-muted-foreground">Billing Customer ID</Label>
+                    <Input
+                      value={editForm.billing_customer_id}
+                      onChange={(e) => setEditForm({ ...editForm, billing_customer_id: e.target.value })}
+                      placeholder="Billing customer ID"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialog({ open: false })}>
               Cancel
             </Button>
-            <Button onClick={handleSaveUser}>
+            <Button onClick={() => setConfirmEditDialog(true)} className="bg-orange-600 hover:bg-orange-700">
               Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={suspendDialog.open} onOpenChange={(open) => setSuspendDialog({ ...suspendDialog, open })}>
+      <AlertDialog open={confirmEditDialog} onOpenChange={setConfirmEditDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>⚠️ Confirm User Profile Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-2">
+                <p>You are about to update the profile for:</p>
+                <p className="font-medium">{editDialog.user?.email}</p>
+                <p className="text-sm mt-3">This action will modify user data in the database. Please ensure all changes are correct before proceeding.</p>
+                <p className="text-xs text-muted-foreground mt-2">Changes will be applied immediately and data will be refetched.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveUser} className="bg-orange-600 hover:bg-orange-700">
+              Confirm & Save
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={suspendDialog.open} onOpenChange={(open: boolean) => setSuspendDialog({ ...suspendDialog, open })}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -958,6 +1036,7 @@ export default function UsersPage() {
                       <p>This will <strong>permanently suspend</strong> the account for:</p>
                       <p className="font-medium">{suspendDialog.user?.email}</p>
                       <p className="text-sm">This is a severe action. The user will be unable to access the platform until manually restored by an admin.</p>
+                      <p className="text-xs text-muted-foreground mt-2">Database will be updated immediately and data will be refetched.</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -965,15 +1044,17 @@ export default function UsersPage() {
                       <p>This will <strong>temporarily suspend</strong> the account for:</p>
                       <p className="font-medium">{suspendDialog.user?.email}</p>
                       <p className="text-sm">This is a reversible action. You can lift the suspension at any time.</p>
+                      <p className="text-xs text-muted-foreground mt-2">Database will be updated immediately and data will be refetched.</p>
                     </div>
                   )}
                 </>
               ) : (
-                <>
+                <div className="space-y-2">
                   <p>Are you sure you want to restore access for:</p>
                   <p className="font-medium">{suspendDialog.user?.email}</p>
                   <p className="text-sm">The user will regain full access to their account.</p>
-                </>
+                  <p className="text-xs text-muted-foreground mt-2">Database will be updated immediately and data will be refetched.</p>
+                </div>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
