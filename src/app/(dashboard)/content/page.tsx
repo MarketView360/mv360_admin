@@ -48,15 +48,21 @@ import {
   fetchBlogPosts,
   createBlogPost,
   updateBlogPost,
-  deleteBlogPost,
+  moveBlogPostToTrash,
+  restoreBlogPost,
+  deleteBlogPostPermanently,
   fetchAnnouncements,
   createAnnouncement,
   updateAnnouncement,
-  deleteAnnouncement,
+  moveAnnouncementToTrash,
+  restoreAnnouncement,
+  deleteAnnouncementPermanently,
   fetchMaintenanceWindows,
   createMaintenanceWindow,
   updateMaintenanceWindow,
-  deleteMaintenanceWindow,
+  moveMaintenanceWindowToTrash,
+  restoreMaintenanceWindow,
+  deleteMaintenanceWindowPermanently,
   type BlogPost,
   type Announcement,
   type MaintenanceWindow,
@@ -101,9 +107,9 @@ export default function ContentManagementPage() {
   const handleDeleteConfirm = async () => {
     if (!deleteDialog.type || !deleteDialog.id) return;
     try {
-      if (deleteDialog.type === "blog") await deleteBlogPost(deleteDialog.id);
-      else if (deleteDialog.type === "announcement") await deleteAnnouncement(deleteDialog.id);
-      else if (deleteDialog.type === "maintenance") await deleteMaintenanceWindow(deleteDialog.id);
+      if (deleteDialog.type === "blog") await moveBlogPostToTrash(deleteDialog.id);
+      else if (deleteDialog.type === "announcement") await moveAnnouncementToTrash(deleteDialog.id);
+      else if (deleteDialog.type === "maintenance") await moveMaintenanceWindowToTrash(deleteDialog.id);
       await loadData();
       setDeleteDialog({ open: false });
     } catch (err) {

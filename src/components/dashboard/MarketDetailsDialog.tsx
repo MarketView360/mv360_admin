@@ -9,15 +9,13 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Clock, TrendingUp, Database, CheckCircle2, XCircle, Calendar } from "lucide-react";
+import { Clock, TrendingUp, CheckCircle2, XCircle, Calendar } from "lucide-react";
 import type { MarketStatus } from "@/lib/market";
-import type { LastSyncInfo } from "@/lib/api";
 
 interface MarketDetailsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   marketStatus: MarketStatus;
-  syncInfo: LastSyncInfo | null;
   currentTime: Date;
 }
 
@@ -25,7 +23,6 @@ export function MarketDetailsDialog({
   open,
   onOpenChange,
   marketStatus,
-  syncInfo,
   currentTime,
 }: MarketDetailsDialogProps) {
   const estTime = new Date(currentTime.toLocaleString("en-US", { timeZone: "America/New_York" }));
@@ -144,53 +141,6 @@ export function MarketDetailsDialog({
                   <p className="text-xs text-muted-foreground">{t.date}</p>
                 </div>
               ))}
-            </CardContent>
-          </Card>
-
-          {/* Data Pipeline Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Database className="h-4 w-4" /> Data Pipeline Status
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {syncInfo && syncInfo.lastSyncTime ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b">
-                    <span className="text-sm text-muted-foreground">Last Sync</span>
-                    <span className="text-sm font-semibold">
-                      {new Date(syncInfo.lastSyncTime).toLocaleString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Recent Syncs by Table</p>
-                    {syncInfo.syncsByTable.slice(0, 8).map((table) => (
-                      <div key={table.tableName} className="flex items-center justify-between text-xs">
-                        <span className="font-mono text-muted-foreground">{table.tableName}</span>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className={`text-xs ${table.status === "completed" ? "border-emerald-500/40 text-emerald-600" : "border-slate-400"}`}>
-                            {table.status}
-                          </Badge>
-                          <span className="text-muted-foreground">
-                            {table.recordsProcessed?.toLocaleString() || 0} rec
-                          </span>
-                          <span className="text-muted-foreground">
-                            {table.lastSync ? new Date(table.lastSync).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }) : "—"}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No sync data available</p>
-              )}
             </CardContent>
           </Card>
         </div>

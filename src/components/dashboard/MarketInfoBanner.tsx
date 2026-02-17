@@ -1,27 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Clock, TrendingUp, Database, Globe } from "lucide-react";
+import { Clock, TrendingUp, Globe } from "lucide-react";
 import { getMarketStatus, formatTimeRemaining } from "@/lib/market";
-import { fetchLastSyncInfo, type LastSyncInfo } from "@/lib/api";
 import { MarketDetailsDialog } from "./MarketDetailsDialog";
 
 export function MarketInfoBanner() {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [syncInfo, setSyncInfo] = useState<LastSyncInfo | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    fetchLastSyncInfo().then(setSyncInfo).catch(console.error);
-    const interval = setInterval(() => {
-      fetchLastSyncInfo().then(setSyncInfo).catch(console.error);
-    }, 60000);
-    return () => clearInterval(interval);
   }, []);
 
   const marketStatus = getMarketStatus(currentTime);
@@ -38,15 +28,6 @@ export function MarketInfoBanner() {
       hour12: true 
     }) + " " + date.toLocaleDateString("en-US", { month: "short", day: "numeric" }) + " " + zone;
   };
-
-  const lastSyncDisplay = syncInfo?.lastSyncTime 
-    ? new Date(syncInfo.lastSyncTime).toLocaleString("en-US", { 
-        month: "short", 
-        day: "numeric", 
-        hour: "2-digit", 
-        minute: "2-digit" 
-      })
-    : "N/A";
 
   const marketStatusText = marketStatus.isOpen 
     ? `Market OPEN • Closes ${marketStatus.nextClose ? `in ${formatTimeRemaining(marketStatus.nextClose)}` : "at 4:00 PM EST"}`
@@ -84,11 +65,6 @@ export function MarketInfoBanner() {
               <TrendingUp className="h-4 w-4" />
               {marketStatusText}
             </span>
-            <span className="text-slate-400">•</span>
-            <span className="inline-flex items-center gap-2 text-slate-300 group-hover:text-white transition-colors">
-              <Database className="h-4 w-4" />
-              <span className="font-semibold">Last Sync:</span> {lastSyncDisplay}
-            </span>
           </div>
         </div>
       </button>
@@ -97,7 +73,6 @@ export function MarketInfoBanner() {
         open={dialogOpen} 
         onOpenChange={setDialogOpen}
         marketStatus={marketStatus}
-        syncInfo={syncInfo}
         currentTime={currentTime}
       />
     </>

@@ -411,6 +411,8 @@ export async function fetchGenesisBudget(token: string) {
 export interface BlogPost {
   id: number;
   created_at: string;
+  updated_at: string | null;
+  deleted_at: string | null;
   title: string;
   description: string;
   date: string;
@@ -419,101 +421,186 @@ export interface BlogPost {
   read_time: number;
   is_featured: boolean;
   published: boolean;
+  status: string;
 }
 
 export interface Announcement {
   id: number;
   created_at: string;
+  updated_at: string | null;
+  deleted_at: string | null;
   text: string | null;
   isActive: boolean | null;
   isClickable: boolean | null;
   Description: string | null;
+  status: string;
 }
 
 export interface MaintenanceWindow {
   id: number;
   created_at: string;
+  updated_at: string | null;
+  deleted_at: string | null;
   scheduled_at: string | null;
   ends_at: string | null;
   is_Active: boolean | null;
   title: string | null;
   description: string | null;
+  status: string;
 }
 
-export async function fetchBlogPosts() {
-  const { data, error } = await supabase
-    .from("blog")
-    .select("*")
-    .order("date", { ascending: false });
+export async function fetchBlogPosts(includeTrash = false) {
+  let query = supabase.from("blog").select("*");
+  
+  if (!includeTrash) {
+    query = query.neq("status", "trash");
+  }
+  
+  const { data, error } = await query.order("date", { ascending: false });
   if (error) throw error;
   return data as BlogPost[];
 }
 
-export async function createBlogPost(post: Omit<BlogPost, "id" | "created_at">) {
+export async function createBlogPost(post: Omit<BlogPost, "id" | "created_at" | "updated_at" | "deleted_at">) {
   const { data, error } = await supabase.from("blog").insert(post).select().single();
   if (error) throw error;
   return data as BlogPost;
 }
 
 export async function updateBlogPost(id: number, updates: Partial<Omit<BlogPost, "id" | "created_at">>) {
-  const { data, error } = await supabase.from("blog").update(updates).eq("id", id).select().single();
+  const updateData = { ...updates, updated_at: new Date().toISOString() };
+  const { data, error } = await supabase.from("blog").update(updateData).eq("id", id).select().single();
   if (error) throw error;
   return data as BlogPost;
 }
 
-export async function deleteBlogPost(id: number) {
+export async function moveBlogPostToTrash(id: number) {
+  const { data, error } = await supabase
+    .from("blog")
+    .update({ status: "trash", deleted_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as BlogPost;
+}
+
+export async function restoreBlogPost(id: number) {
+  const { data, error } = await supabase
+    .from("blog")
+    .update({ status: "draft", deleted_at: null })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as BlogPost;
+}
+
+export async function deleteBlogPostPermanently(id: number) {
   const { error } = await supabase.from("blog").delete().eq("id", id);
   if (error) throw error;
 }
 
-export async function fetchAnnouncements() {
-  const { data, error } = await supabase
-    .from("announcements")
-    .select("*")
-    .order("created_at", { ascending: false });
+export async function fetchAnnouncements(includeTrash = false) {
+  let query = supabase.from("announcements").select("*");
+  
+  if (!includeTrash) {
+    query = query.neq("status", "trash");
+  }
+  
+  const { data, error } = await query.order("created_at", { ascending: false });
   if (error) throw error;
   return data as Announcement[];
 }
 
-export async function createAnnouncement(announcement: Omit<Announcement, "id" | "created_at">) {
+export async function createAnnouncement(announcement: Omit<Announcement, "id" | "created_at" | "updated_at" | "deleted_at">) {
   const { data, error } = await supabase.from("announcements").insert(announcement).select().single();
   if (error) throw error;
   return data as Announcement;
 }
 
 export async function updateAnnouncement(id: number, updates: Partial<Omit<Announcement, "id" | "created_at">>) {
-  const { data, error } = await supabase.from("announcements").update(updates).eq("id", id).select().single();
+  const updateData = { ...updates, updated_at: new Date().toISOString() };
+  const { data, error } = await supabase.from("announcements").update(updateData).eq("id", id).select().single();
   if (error) throw error;
   return data as Announcement;
 }
 
-export async function deleteAnnouncement(id: number) {
+export async function moveAnnouncementToTrash(id: number) {
+  const { data, error } = await supabase
+    .from("announcements")
+    .update({ status: "trash", deleted_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Announcement;
+}
+
+export async function restoreAnnouncement(id: number) {
+  const { data, error } = await supabase
+    .from("announcements")
+    .update({ status: "draft", deleted_at: null })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Announcement;
+}
+
+export async function deleteAnnouncementPermanently(id: number) {
   const { error } = await supabase.from("announcements").delete().eq("id", id);
   if (error) throw error;
 }
 
-export async function fetchMaintenanceWindows() {
-  const { data, error } = await supabase
-    .from("maintenance")
-    .select("*")
-    .order("scheduled_at", { ascending: false });
+export async function fetchMaintenanceWindows(includeTrash = false) {
+  let query = supabase.from("maintenance").select("*");
+  
+  if (!includeTrash) {
+    query = query.neq("status", "trash");
+  }
+  
+  const { data, error } = await query.order("scheduled_at", { ascending: false });
   if (error) throw error;
   return data as MaintenanceWindow[];
 }
 
-export async function createMaintenanceWindow(window: Omit<MaintenanceWindow, "id" | "created_at">) {
+export async function createMaintenanceWindow(window: Omit<MaintenanceWindow, "id" | "created_at" | "updated_at" | "deleted_at">) {
   const { data, error } = await supabase.from("maintenance").insert(window).select().single();
   if (error) throw error;
   return data as MaintenanceWindow;
 }
 
 export async function updateMaintenanceWindow(id: number, updates: Partial<Omit<MaintenanceWindow, "id" | "created_at">>) {
-  const { data, error } = await supabase.from("maintenance").update(updates).eq("id", id).select().single();
+  const updateData = { ...updates, updated_at: new Date().toISOString() };
+  const { data, error } = await supabase.from("maintenance").update(updateData).eq("id", id).select().single();
   if (error) throw error;
   return data as MaintenanceWindow;
 }
 
-export async function deleteMaintenanceWindow(id: number) {
+export async function moveMaintenanceWindowToTrash(id: number) {
+  const { data, error } = await supabase
+    .from("maintenance")
+    .update({ status: "trash", deleted_at: new Date().toISOString() })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as MaintenanceWindow;
+}
+
+export async function restoreMaintenanceWindow(id: number) {
+  const { data, error } = await supabase
+    .from("maintenance")
+    .update({ status: "draft", deleted_at: null })
+    .eq("id", id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as MaintenanceWindow;
+}
+
+export async function deleteMaintenanceWindowPermanently(id: number) {
   const { error } = await supabase.from("maintenance").delete().eq("id", id);
   if (error) throw error;
 }
