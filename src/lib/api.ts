@@ -407,3 +407,184 @@ export async function fetchGenesisBudget(token: string) {
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+export interface BlogPost {
+  id: number;
+  created_at: string;
+  title: string;
+  description: string;
+  date: string;
+  type: string;
+  content: string | null;
+  read_time: number;
+  is_featured: boolean;
+  published: boolean;
+}
+
+export interface Announcement {
+  id: number;
+  created_at: string;
+  text: string | null;
+  isActive: boolean | null;
+  isClickable: boolean | null;
+  Description: string | null;
+}
+
+export interface MaintenanceWindow {
+  id: number;
+  created_at: string;
+  scheduled_at: string | null;
+  ends_at: string | null;
+  is_Active: boolean | null;
+  title: string | null;
+  description: string | null;
+}
+
+export async function fetchBlogPosts() {
+  const { data, error } = await supabase
+    .from("blog")
+    .select("*")
+    .order("date", { ascending: false });
+  if (error) throw error;
+  return data as BlogPost[];
+}
+
+export async function createBlogPost(post: Omit<BlogPost, "id" | "created_at">) {
+  const { data, error } = await supabase.from("blog").insert(post).select().single();
+  if (error) throw error;
+  return data as BlogPost;
+}
+
+export async function updateBlogPost(id: number, updates: Partial<Omit<BlogPost, "id" | "created_at">>) {
+  const { data, error } = await supabase.from("blog").update(updates).eq("id", id).select().single();
+  if (error) throw error;
+  return data as BlogPost;
+}
+
+export async function deleteBlogPost(id: number) {
+  const { error } = await supabase.from("blog").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function fetchAnnouncements() {
+  const { data, error } = await supabase
+    .from("announcements")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data as Announcement[];
+}
+
+export async function createAnnouncement(announcement: Omit<Announcement, "id" | "created_at">) {
+  const { data, error } = await supabase.from("announcements").insert(announcement).select().single();
+  if (error) throw error;
+  return data as Announcement;
+}
+
+export async function updateAnnouncement(id: number, updates: Partial<Omit<Announcement, "id" | "created_at">>) {
+  const { data, error } = await supabase.from("announcements").update(updates).eq("id", id).select().single();
+  if (error) throw error;
+  return data as Announcement;
+}
+
+export async function deleteAnnouncement(id: number) {
+  const { error } = await supabase.from("announcements").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function fetchMaintenanceWindows() {
+  const { data, error } = await supabase
+    .from("maintenance")
+    .select("*")
+    .order("scheduled_at", { ascending: false });
+  if (error) throw error;
+  return data as MaintenanceWindow[];
+}
+
+export async function createMaintenanceWindow(window: Omit<MaintenanceWindow, "id" | "created_at">) {
+  const { data, error } = await supabase.from("maintenance").insert(window).select().single();
+  if (error) throw error;
+  return data as MaintenanceWindow;
+}
+
+export async function updateMaintenanceWindow(id: number, updates: Partial<Omit<MaintenanceWindow, "id" | "created_at">>) {
+  const { data, error } = await supabase.from("maintenance").update(updates).eq("id", id).select().single();
+  if (error) throw error;
+  return data as MaintenanceWindow;
+}
+
+export async function deleteMaintenanceWindow(id: number) {
+  const { error } = await supabase.from("maintenance").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export interface LastSyncInfo {
+  lastSyncTime: string | null;
+  syncsByTable: {
+    tableName: string;
+    lastSync: string | null;
+    status: string | null;
+    recordsProcessed: number | null;
+  }[];
+}
+
+export interface DashboardTickerStats {
+  totalCompanies: number;
+  totalUsers: number;
+  priceRecords: number;
+  newsArticles: number;
+  activeWatchlists: number;
+  lastSyncTime: string | null;
+}
+
+export async function fetchLastSyncInfo(): Promise<LastSyncInfo> {
+  const { data: syncs, error } = await supabase
+    .from("sync_logs")
+    .select("sync_type, completed_at, status, records_processed")
+    .order("completed_at", { ascending: false })
+    .limit(20);
+
+  if (error) throw error;
+
+  const syncsByTable: Record<string, { lastSync: string | null; status: string | null; recordsProcessed: number | null }> = {};
+  
+  (syncs || []).forEach((sync) => {
+    if (!syncsByTable[sync.sync_type]) {
+      syncsByTable[sync.sync_type] = {
+        lastSync: sync.completed_at,
+        status: sync.status,
+        recordsProcessed: sync.records_processed,
+      };
+    }
+  });
+
+  const mostRecentSync = syncs?.[0]?.completed_at || null;
+
+  return {
+    lastSyncTime: mostRecentSync,
+    syncsByTable: Object.entries(syncsByTable).map(([tableName, info]) => ({
+      tableName,
+      ...info,
+    })),
+  };
+}
+
+export async function fetchDashboardTickerStats(): Promise<DashboardTickerStats> {
+  const [companies, users, priceRows, news, watchlists, syncInfo] = await Promise.all([
+    supabase.from("companies").select("id", { count: "exact", head: true }),
+    supabase.from("user_profiles").select("id", { count: "exact", head: true }),
+    supabase.from("price_data").select("id", { count: "exact", head: true }),
+    supabase.from("news").select("id", { count: "exact", head: true }),
+    supabase.from("watchlists").select("id", { count: "exact", head: true }),
+    fetchLastSyncInfo(),
+  ]);
+
+  return {
+    totalCompanies: companies.count ?? 0,
+    totalUsers: users.count ?? 0,
+    priceRecords: priceRows.count ?? 0,
+    newsArticles: news.count ?? 0,
+    activeWatchlists: watchlists.count ?? 0,
+    lastSyncTime: syncInfo.lastSyncTime,
+  };
+}

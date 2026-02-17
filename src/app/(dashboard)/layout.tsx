@@ -5,6 +5,8 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
 import { logAuthEvent } from "@/lib/api";
 import { AdminSidebar } from "@/components/admin/sidebar";
+import { MarketInfoBanner } from "@/components/dashboard/MarketInfoBanner";
+import { StatsTickerBanner } from "@/components/dashboard/StatsTickerBanner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -201,9 +203,13 @@ export default function DashboardLayout({
   return (
     <div className="flex h-screen overflow-hidden">
       <AdminSidebar />
-      <main className="flex-1 overflow-y-auto bg-background p-6">
-        {children}
-      </main>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <MarketInfoBanner />
+        <StatsTickerBanner />
+        <main className="flex-1 overflow-y-auto bg-background p-6">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }
