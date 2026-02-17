@@ -12,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp } from "lucide-react";
-import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend } from "@/lib/api";
+import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp, Trash2 } from "lucide-react";
+import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend, deleteUserAccount } from "@/lib/api";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
 
 interface UserProfile {
@@ -104,6 +104,10 @@ export default function UsersPage() {
   const [editDialog, setEditDialog] = useState<{ open: boolean; user?: UserProfile }>({ open: false });
   const [confirmEditDialog, setConfirmEditDialog] = useState(false);
   const [suspendDialog, setSuspendDialog] = useState<{ open: boolean; type: "temp" | "perm" | null; user?: UserProfile; action: "suspend" | "restore" }>({ open: false, type: null, action: "suspend" });
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; user?: UserProfile }>({ open: false });
+  const [confirmEmail, setConfirmEmail] = useState("");
+  const [bypassConfirmation, setBypassConfirmation] = useState(false);
+  const [showBypassOption, setShowBypassOption] = useState(false);
   const [editForm, setEditForm] = useState({
     subscription_tier: "",
     role: "",
@@ -295,11 +299,26 @@ export default function UsersPage() {
 
   const openSuspendDialog = (user: UserProfile, type: "temp" | "perm", action: "suspend" | "restore") => {
     setSuspendDialog({ open: true, type, user, action });
+    setConfirmEmail("");
+    setBypassConfirmation(false);
+    setShowBypassOption(false);
   };
 
   const handleSuspendConfirm = async () => {
     if (!suspendDialog.user || !suspendDialog.type) return;
+    
+    // Check email confirmation for permanent suspension (only for suspend action, not restore)
+    if (suspendDialog.type === "perm" && suspendDialog.action === "suspend") {
+      if (!bypassConfirmation && confirmEmail !== suspendDialog.user.email) {
+        alert("Email address does not match. Please type the correct email address to confirm.");
+        return;
+      }
+    }
+    
     setSuspendDialog({ open: false, type: null, action: "suspend" });
+    setConfirmEmail("");
+    setBypassConfirmation(false);
+    setShowBypassOption(false);
     
     try {
       if (suspendDialog.type === "temp") {
@@ -310,7 +329,39 @@ export default function UsersPage() {
       await loadData();
     } catch (err) {
       console.error("Failed to toggle suspension:", err);
-      alert("Failed to update suspension status. Please try again.");
+      const errorMessage = err instanceof Error ? err.message : "Failed to update suspension status. Please try again.";
+      alert(errorMessage);
+    }
+  };
+
+  const openDeleteDialog = (user: UserProfile) => {
+    setDeleteDialog({ open: true, user });
+    setConfirmEmail("");
+    setBypassConfirmation(false);
+    setShowBypassOption(false);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteDialog.user) return;
+    
+    // Check if email matches or bypass is enabled
+    if (!bypassConfirmation && confirmEmail !== deleteDialog.user.email) {
+      alert("Email address does not match. Please type the correct email address to confirm.");
+      return;
+    }
+    
+    setDeleteDialog({ open: false });
+    setConfirmEmail("");
+    setBypassConfirmation(false);
+    setShowBypassOption(false);
+    
+    try {
+      await deleteUserAccount(deleteDialog.user.id);
+      await loadData();
+    } catch (err) {
+      console.error("Failed to delete user:", err);
+      const errorMessage = err instanceof Error ? err.message : "Failed to delete user. Please try again.";
+      alert(errorMessage);
     }
   };
 
@@ -829,29 +880,33 @@ export default function UsersPage() {
                               </div>
                             </div>
 
-                            <div className="flex gap-2 border-t pt-3">
+                            <div className="flex gap-2 border-t pt-3 flex-wrap">
                               {!user.temp_suspend && !user.perm_suspend && (
                                 <>
                                   <Button variant="outline" size="sm" onClick={() => openSuspendDialog(user, "temp", "suspend")}>
                                     <UserX className="h-3 w-3 mr-1" />
                                     Temp Suspend
                                   </Button>
-                                  <Button variant="destructive" size="sm" onClick={() => openSuspendDialog(user, "perm", "suspend")}>
+                                  <Button variant="outline" size="sm" className="border-red-500 text-red-600 hover:bg-red-50" onClick={() => openSuspendDialog(user, "perm", "suspend")}>
                                     <Ban className="h-3 w-3 mr-1" />
                                     Perm Suspend
                                   </Button>
                                 </>
                               )}
                               {user.temp_suspend && (
-                                <Button variant="outline" size="sm" onClick={() => openSuspendDialog(user, "temp", "restore")}>
-                                  Lift Temp Suspension
+                                <Button variant="outline" size="sm" className="border-green-500 text-green-600 hover:bg-green-50" onClick={() => openSuspendDialog(user, "temp", "restore")}>
+                                  Restore from Temp Suspension
                                 </Button>
                               )}
                               {user.perm_suspend && (
-                                <Button variant="destructive" size="sm" onClick={() => openSuspendDialog(user, "perm", "restore")}>
-                                  Lift Perm Suspension
+                                <Button variant="outline" size="sm" className="border-green-500 text-green-600 hover:bg-green-50" onClick={() => openSuspendDialog(user, "perm", "restore")}>
+                                  Restore from Perm Suspension
                                 </Button>
                               )}
+                              <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(user)}>
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                Delete User
+                              </Button>
                             </div>
                           </div>
                         </TableCell>
@@ -1022,49 +1077,199 @@ export default function UsersPage() {
       </AlertDialog>
 
       <AlertDialog open={suspendDialog.open} onOpenChange={(open: boolean) => setSuspendDialog({ ...suspendDialog, open })}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle>
               {suspendDialog.action === "suspend" ? "Suspend User Account" : "Restore User Account"}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {suspendDialog.action === "suspend" ? (
-                <>
-                  {suspendDialog.type === "perm" ? (
-                    <div className="space-y-2">
-                      <p className="font-semibold text-red-600">⚠️ PERMANENT SUSPENSION</p>
-                      <p>This will <strong>permanently suspend</strong> the account for:</p>
-                      <p className="font-medium">{suspendDialog.user?.email}</p>
-                      <p className="text-sm">This is a severe action. The user will be unable to access the platform until manually restored by an admin.</p>
-                      <p className="text-xs text-muted-foreground mt-2">Database will be updated immediately and data will be refetched.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="font-semibold text-yellow-600">⚠️ TEMPORARY SUSPENSION</p>
-                      <p>This will <strong>temporarily suspend</strong> the account for:</p>
-                      <p className="font-medium">{suspendDialog.user?.email}</p>
-                      <p className="text-sm">This is a reversible action. You can lift the suspension at any time.</p>
-                      <p className="text-xs text-muted-foreground mt-2">Database will be updated immediately and data will be refetched.</p>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="space-y-2">
-                  <p>Are you sure you want to restore access for:</p>
-                  <p className="font-medium">{suspendDialog.user?.email}</p>
-                  <p className="text-sm">The user will regain full access to their account.</p>
-                  <p className="text-xs text-muted-foreground mt-2">Database will be updated immediately and data will be refetched.</p>
-                </div>
-              )}
+            <AlertDialogDescription asChild>
+              <div>
+                {suspendDialog.action === "suspend" ? (
+                  <>
+                    {suspendDialog.type === "perm" ? (
+                      <div className="space-y-2">
+                        <p className="font-semibold text-red-600">⚠️ PERMANENT SUSPENSION</p>
+                        <p>This will <strong>permanently suspend</strong> the account for:</p>
+                        <p className="font-medium text-lg">{suspendDialog.user?.email}</p>
+                        <p className="text-sm">This is a severe action. The user will be unable to access the platform until manually restored by an admin.</p>
+                        <p className="text-xs text-muted-foreground mt-2">Database will be updated immediately and data will be refetched.</p>
+                        
+                        {!bypassConfirmation && (
+                          <div className="mt-4 space-y-2">
+                            <Label htmlFor="suspend-email-confirm" className="text-sm font-medium">
+                              Type the user&apos;s email address to confirm permanent suspension:
+                            </Label>
+                            <Input
+                              id="suspend-email-confirm"
+                              type="email"
+                              placeholder={suspendDialog.user?.email || ""}
+                              value={confirmEmail}
+                              onChange={(e) => setConfirmEmail(e.target.value)}
+                              className="border-red-300 focus:border-red-500"
+                            />
+                          </div>
+                        )}
+                        
+                        {bypassConfirmation && (
+                          <div className="mt-4 p-3 bg-orange-50 border border-orange-300 rounded">
+                            <p className="text-sm text-orange-800 font-medium">
+                              ⚠️ Email confirmation bypassed. You can proceed without typing the email.
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="mt-4 pt-3 border-t">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowBypassOption(!showBypassOption)}
+                            className="text-xs text-muted-foreground hover:text-foreground"
+                          >
+                            <ChevronDown className={`h-3 w-3 mr-1 transition-transform ${showBypassOption ? "rotate-180" : ""}`} />
+                            Advanced Options
+                          </Button>
+                          {showBypassOption && (
+                            <div className="mt-2 p-3 bg-muted rounded space-y-2">
+                              <div className="flex items-center space-x-2">
+                                <Switch
+                                  id="bypass-suspend-confirm"
+                                  checked={bypassConfirmation}
+                                  onCheckedChange={setBypassConfirmation}
+                                />
+                                <Label htmlFor="bypass-suspend-confirm" className="text-sm cursor-pointer">
+                                  Proceed without email confirmation
+                                </Label>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                Enable this to bypass the email confirmation requirement. Use with caution.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="font-semibold text-yellow-600">⚠️ TEMPORARY SUSPENSION</p>
+                        <p>This will <strong>temporarily suspend</strong> the account for:</p>
+                        <p className="font-medium">{suspendDialog.user?.email}</p>
+                        <p className="text-sm">This is a reversible action. You can lift the suspension at any time.</p>
+                        <p className="text-xs text-muted-foreground mt-2">Database will be updated immediately and data will be refetched.</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <p>Are you sure you want to restore access for:</p>
+                    <p className="font-medium">{suspendDialog.user?.email}</p>
+                    <p className="text-sm">The user will regain full access to their account.</p>
+                    <p className="text-xs text-muted-foreground mt-2">Database will be updated immediately and data will be refetched.</p>
+                  </div>
+                )}
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => {
+              setConfirmEmail("");
+              setBypassConfirmation(false);
+              setShowBypassOption(false);
+            }}>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleSuspendConfirm}
               className={suspendDialog.action === "suspend" && suspendDialog.type === "perm" ? "bg-red-600 hover:bg-red-700" : ""}
             >
               {suspendDialog.action === "suspend" ? "Confirm Suspension" : "Confirm Restore"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteDialog.open} onOpenChange={(open: boolean) => setDeleteDialog({ ...deleteDialog, open })}>
+        <AlertDialogContent className="max-w-2xl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>🗑️ Delete User Account</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p className="font-semibold text-red-600">⚠️ DESTRUCTIVE ACTION - CANNOT BE UNDONE</p>
+                <p>You are about to <strong>permanently delete</strong> the account for:</p>
+                <p className="font-medium text-lg">{deleteDialog.user?.email}</p>
+                <div className="bg-red-50 border border-red-200 rounded p-3 mt-3">
+                  <p className="text-sm font-semibold text-red-800">This will:</p>
+                  <ul className="text-sm text-red-700 mt-2 space-y-1 list-disc list-inside">
+                    <li>Delete the user profile from the database</li>
+                    <li>Remove all associated user data</li>
+                    <li>Delete the authentication account</li>
+                    <li>Cannot be recovered or undone</li>
+                  </ul>
+                </div>
+                <p className="text-sm font-medium mt-3">Consider using <strong>Permanent Suspension</strong> instead if you want to preserve the option to restore access later.</p>
+                
+                {!bypassConfirmation && (
+                  <div className="mt-4 space-y-2">
+                    <Label htmlFor="delete-email-confirm" className="text-sm font-medium">
+                      Type the user&apos;s email address to confirm deletion:
+                    </Label>
+                    <Input
+                      id="delete-email-confirm"
+                      type="email"
+                      placeholder={deleteDialog.user?.email || ""}
+                      value={confirmEmail}
+                      onChange={(e) => setConfirmEmail(e.target.value)}
+                      className="border-red-300 focus:border-red-500"
+                    />
+                  </div>
+                )}
+                
+                {bypassConfirmation && (
+                  <div className="mt-4 p-3 bg-orange-50 border border-orange-300 rounded">
+                    <p className="text-sm text-orange-800 font-medium">
+                      ⚠️ Email confirmation bypassed. You can proceed without typing the email.
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-4 pt-3 border-t">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowBypassOption(!showBypassOption)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronDown className={`h-3 w-3 mr-1 transition-transform ${showBypassOption ? "rotate-180" : ""}`} />
+                    Advanced Options
+                  </Button>
+                  {showBypassOption && (
+                    <div className="mt-2 p-3 bg-muted rounded space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="bypass-delete-confirm"
+                          checked={bypassConfirmation}
+                          onCheckedChange={setBypassConfirmation}
+                        />
+                        <Label htmlFor="bypass-delete-confirm" className="text-sm cursor-pointer">
+                          Proceed without email confirmation
+                        </Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Enable this to bypass the email confirmation requirement. Use with caution.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setConfirmEmail("");
+              setBypassConfirmation(false);
+              setShowBypassOption(false);
+            }}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Confirm Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -155,10 +155,14 @@ export async function toggleTempSuspend(userId: string, suspend: boolean) {
     .from("user_profiles")
     .update({ temp_suspend: suspend })
     .eq("id", userId)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+    .select();
+  
+  if (error) {
+    console.error("Error toggling temp suspension:", error);
+    throw new Error(error.message || "Failed to update suspension status");
+  }
+  
+  return data?.[0] || null;
 }
 
 export async function togglePermSuspend(userId: string, suspend: boolean) {
@@ -166,15 +170,39 @@ export async function togglePermSuspend(userId: string, suspend: boolean) {
     .from("user_profiles")
     .update({ perm_suspend: suspend })
     .eq("id", userId)
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+    .select();
+  
+  if (error) {
+    console.error("Error toggling perm suspension:", error);
+    throw new Error(error.message || "Failed to update suspension status");
+  }
+  
+  return data?.[0] || null;
 }
 
 export async function deleteUserAccount(userId: string) {
-  const { error } = await supabase.auth.admin.deleteUser(userId);
-  if (error) throw error;
+  // First, delete user data from user_profiles
+  const { error: profileError } = await supabase
+    .from("user_profiles")
+    .delete()
+    .eq("id", userId);
+  
+  if (profileError) {
+    console.error("Error deleting user profile:", profileError);
+    throw new Error(profileError.message || "Failed to delete user profile");
+  }
+  
+  // Then delete from auth (if using Supabase auth admin)
+  try {
+    const { error: authError } = await supabase.auth.admin.deleteUser(userId);
+    if (authError) {
+      console.error("Error deleting user from auth:", authError);
+      // Don't throw here as profile is already deleted
+    }
+  } catch (err) {
+    console.error("Auth deletion not available or failed:", err);
+    // Continue anyway as profile deletion succeeded
+  }
 }
 
 // ─── Data Quality ─────────────────────────────────────────────────────────────
