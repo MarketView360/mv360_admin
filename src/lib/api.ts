@@ -75,44 +75,70 @@ export async function fetchUsers() {
   const [profiles, settings, screens, watchlistsRes] = await Promise.all([
     supabase
       .from("user_profiles")
-      .select("id, email, display_name, full_name, subscription_tier, role, created_at, updated_at, onboarded_at, billing_customer_id, newsletter_opt_in, announcements_opt_in, alerts_opt_in")
+      .select("id, email, display_name, full_name, subscription_tier, role, created_at, updated_at, onboarded_at, billing_customer_id, newsletter_opt_in, announcements_opt_in, alerts_opt_in, events_and_promotions_opt_in, temp_suspend, perm_suspend, metadata, preferences")
       .order("created_at", { ascending: false }),
     supabase
       .from("user_settings")
       .select("user_id, theme, text_size, compact_mode, reduce_animations, desktop_notifications, email_notifications, use_custom_ai_keys"),
     supabase
       .from("user_screens")
-      .select("user_id, id"),
+      .select("user_id, id, updated_at")
+      .order("updated_at", { ascending: false }),
     supabase
       .from("watchlists")
-      .select("user_id, id"),
+      .select("user_id, id, updated_at")
+      .order("updated_at", { ascending: false }),
   ]);
 
   const settingsMap = new Map<string, (typeof settings.data extends (infer T)[] | null ? T : never)>();
   (settings.data ?? []).forEach((s) => settingsMap.set(s.user_id, s));
 
   const screenCounts = new Map<string, number>();
+  const screenLastActivity = new Map<string, string>();
   (screens.data ?? []).forEach((s) => {
     screenCounts.set(s.user_id, (screenCounts.get(s.user_id) ?? 0) + 1);
+    if (!screenLastActivity.has(s.user_id) || (s.updated_at && s.updated_at > screenLastActivity.get(s.user_id)!)) {
+      screenLastActivity.set(s.user_id, s.updated_at || "");
+    }
   });
 
   const watchlistCounts = new Map<string, number>();
+  const watchlistLastActivity = new Map<string, string>();
   (watchlistsRes.data ?? []).forEach((w) => {
     watchlistCounts.set(w.user_id, (watchlistCounts.get(w.user_id) ?? 0) + 1);
+    if (!watchlistLastActivity.has(w.user_id) || (w.updated_at && w.updated_at > watchlistLastActivity.get(w.user_id)!)) {
+      watchlistLastActivity.set(w.user_id, w.updated_at || "");
+    }
   });
 
-  return (profiles.data ?? []).map((p) => ({
-    ...p,
-    settings: settingsMap.get(p.id) ?? null,
-    screenCount: screenCounts.get(p.id) ?? 0,
-    watchlistCount: watchlistCounts.get(p.id) ?? 0,
-  }));
+  return (profiles.data ?? []).map((p) => {
+    const screenActivity = screenLastActivity.get(p.id);
+    const watchlistActivity = watchlistLastActivity.get(p.id);
+    let lastActivity = p.updated_at;
+    
+    if (screenActivity && (!lastActivity || screenActivity > lastActivity)) lastActivity = screenActivity;
+    if (watchlistActivity && (!lastActivity || watchlistActivity > lastActivity)) lastActivity = watchlistActivity;
+
+    return {
+      ...p,
+      settings: settingsMap.get(p.id) ?? null,
+      screenCount: screenCounts.get(p.id) ?? 0,
+      watchlistCount: watchlistCounts.get(p.id) ?? 0,
+      lastActivity,
+    };
+  });
 }
 
 export async function updateUserProfile(userId: string, updates: {
   subscription_tier?: string;
   role?: string;
   full_name?: string;
+  newsletter_opt_in?: boolean;
+  announcements_opt_in?: boolean;
+  alerts_opt_in?: boolean;
+  events_and_promotions_opt_in?: boolean;
+  temp_suspend?: boolean;
+  perm_suspend?: boolean;
 }) {
   const { data, error } = await supabase
     .from("user_profiles")
@@ -124,10 +150,21 @@ export async function updateUserProfile(userId: string, updates: {
   return data;
 }
 
-export async function suspendUser(userId: string) {
+export async function toggleTempSuspend(userId: string, suspend: boolean) {
   const { data, error } = await supabase
     .from("user_profiles")
-    .update({ role: "suspended" })
+    .update({ temp_suspend: suspend })
+    .eq("id", userId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function togglePermSuspend(userId: string, suspend: boolean) {
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .update({ perm_suspend: suspend })
     .eq("id", userId)
     .select()
     .single();
