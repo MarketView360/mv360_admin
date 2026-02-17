@@ -450,7 +450,7 @@ export interface MaintenanceWindow {
 }
 
 export async function fetchBlogPosts(includeTrash = false) {
-  let query = supabase.from("admin.blog").select("*");
+  let query = supabase.schema("admin").from("blog").select("*");
   
   if (!includeTrash) {
     query = query.neq("status", "trash");
@@ -462,21 +462,22 @@ export async function fetchBlogPosts(includeTrash = false) {
 }
 
 export async function createBlogPost(post: Omit<BlogPost, "id" | "created_at" | "updated_at" | "deleted_at">) {
-  const { data, error } = await supabase.from("admin.blog").insert(post).select().single();
+  const { data, error } = await supabase.schema("admin").from("blog").insert(post).select().single();
   if (error) throw error;
   return data as BlogPost;
 }
 
 export async function updateBlogPost(id: number, updates: Partial<Omit<BlogPost, "id" | "created_at">>) {
   const updateData = { ...updates, updated_at: new Date().toISOString() };
-  const { data, error } = await supabase.from("admin.blog").update(updateData).eq("id", id).select().single();
+  const { data, error } = await supabase.schema("admin").from("blog").update(updateData).eq("id", id).select().single();
   if (error) throw error;
   return data as BlogPost;
 }
 
 export async function moveBlogPostToTrash(id: number) {
   const { data, error } = await supabase
-    .from("admin.blog")
+    .schema("admin")
+    .from("blog")
     .update({ status: "trash", deleted_at: new Date().toISOString() })
     .eq("id", id)
     .select()
@@ -487,7 +488,8 @@ export async function moveBlogPostToTrash(id: number) {
 
 export async function restoreBlogPost(id: number) {
   const { data, error } = await supabase
-    .from("admin.blog")
+    .schema("admin")
+    .from("blog")
     .update({ status: "draft", deleted_at: null })
     .eq("id", id)
     .select()
@@ -497,12 +499,12 @@ export async function restoreBlogPost(id: number) {
 }
 
 export async function deleteBlogPostPermanently(id: number) {
-  const { error } = await supabase.from("admin.blog").delete().eq("id", id);
+  const { error } = await supabase.schema("admin").from("blog").delete().eq("id", id);
   if (error) throw error;
 }
 
 export async function fetchAnnouncements(includeTrash = false) {
-  let query = supabase.from("admin.announcements").select("*");
+  let query = supabase.schema("admin").from("announcements").select("*");
   
   if (!includeTrash) {
     query = query.neq("status", "trash");
@@ -514,21 +516,22 @@ export async function fetchAnnouncements(includeTrash = false) {
 }
 
 export async function createAnnouncement(announcement: Omit<Announcement, "id" | "created_at" | "updated_at" | "deleted_at">) {
-  const { data, error } = await supabase.from("admin.announcements").insert(announcement).select().single();
+  const { data, error } = await supabase.schema("admin").from("announcements").insert(announcement).select().single();
   if (error) throw error;
   return data as Announcement;
 }
 
 export async function updateAnnouncement(id: number, updates: Partial<Omit<Announcement, "id" | "created_at">>) {
   const updateData = { ...updates, updated_at: new Date().toISOString() };
-  const { data, error } = await supabase.from("admin.announcements").update(updateData).eq("id", id).select().single();
+  const { data, error } = await supabase.schema("admin").from("announcements").update(updateData).eq("id", id).select().single();
   if (error) throw error;
   return data as Announcement;
 }
 
 export async function moveAnnouncementToTrash(id: number) {
   const { data, error } = await supabase
-    .from("admin.announcements")
+    .schema("admin")
+    .from("announcements")
     .update({ status: "trash", deleted_at: new Date().toISOString() })
     .eq("id", id)
     .select()
@@ -539,7 +542,8 @@ export async function moveAnnouncementToTrash(id: number) {
 
 export async function restoreAnnouncement(id: number) {
   const { data, error } = await supabase
-    .from("admin.announcements")
+    .schema("admin")
+    .from("announcements")
     .update({ status: "draft", deleted_at: null })
     .eq("id", id)
     .select()
@@ -549,12 +553,12 @@ export async function restoreAnnouncement(id: number) {
 }
 
 export async function deleteAnnouncementPermanently(id: number) {
-  const { error } = await supabase.from("admin.announcements").delete().eq("id", id);
+  const { error } = await supabase.schema("admin").from("announcements").delete().eq("id", id);
   if (error) throw error;
 }
 
 export async function fetchMaintenanceWindows(includeTrash = false) {
-  let query = supabase.from("admin.maintenance").select("*");
+  let query = supabase.schema("admin").from("maintenance").select("*");
   
   if (!includeTrash) {
     query = query.neq("status", "trash");
@@ -566,21 +570,22 @@ export async function fetchMaintenanceWindows(includeTrash = false) {
 }
 
 export async function createMaintenanceWindow(window: Omit<MaintenanceWindow, "id" | "created_at" | "updated_at" | "deleted_at">) {
-  const { data, error } = await supabase.from("admin.maintenance").insert(window).select().single();
+  const { data, error } = await supabase.schema("admin").from("maintenance").insert(window).select().single();
   if (error) throw error;
   return data as MaintenanceWindow;
 }
 
 export async function updateMaintenanceWindow(id: number, updates: Partial<Omit<MaintenanceWindow, "id" | "created_at">>) {
   const updateData = { ...updates, updated_at: new Date().toISOString() };
-  const { data, error } = await supabase.from("admin.maintenance").update(updateData).eq("id", id).select().single();
+  const { data, error } = await supabase.schema("admin").from("maintenance").update(updateData).eq("id", id).select().single();
   if (error) throw error;
   return data as MaintenanceWindow;
 }
 
 export async function moveMaintenanceWindowToTrash(id: number) {
   const { data, error } = await supabase
-    .from("admin.maintenance")
+    .schema("admin")
+    .from("maintenance")
     .update({ status: "trash", deleted_at: new Date().toISOString() })
     .eq("id", id)
     .select()
@@ -591,7 +596,8 @@ export async function moveMaintenanceWindowToTrash(id: number) {
 
 export async function restoreMaintenanceWindow(id: number) {
   const { data, error } = await supabase
-    .from("admin.maintenance")
+    .schema("admin")
+    .from("maintenance")
     .update({ status: "draft", deleted_at: null })
     .eq("id", id)
     .select()
@@ -601,7 +607,7 @@ export async function restoreMaintenanceWindow(id: number) {
 }
 
 export async function deleteMaintenanceWindowPermanently(id: number) {
-  const { error } = await supabase.from("admin.maintenance").delete().eq("id", id);
+  const { error } = await supabase.schema("admin").from("maintenance").delete().eq("id", id);
   if (error) throw error;
 }
 
