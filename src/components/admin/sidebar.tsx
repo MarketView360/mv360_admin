@@ -15,6 +15,7 @@ import {
   DollarSign,
   Users,
   DatabaseZap,
+  FileText,
   LogOut,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -29,6 +30,7 @@ const navItems = [
   { href: "/logging", label: "Logging", icon: ScrollText },
   { href: "/revenue", label: "Revenue", icon: DollarSign },
   { href: "/users", label: "Users", icon: Users },
+  { href: "/content", label: "Content", icon: FileText },
   { href: "/data-quality", label: "Data Quality", icon: DatabaseZap },
 ];
 
