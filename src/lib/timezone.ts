@@ -69,3 +69,49 @@ export function formatDateOnly(isoDate: string | null): string {
   
   return `${year}-${month}-${day}`;
 }
+
+export function formatTimezonesArray(isoTimestamp: string | null): Array<{ zone: string; time: string }> {
+  if (!isoTimestamp) return [];
+  
+  const date = new Date(isoTimestamp);
+  if (isNaN(date.getTime())) return [];
+
+  return [
+    {
+      zone: "IST (India)",
+      time: new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(date),
+    },
+    {
+      zone: "EST (US East)",
+      time: new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/New_York",
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(date),
+    },
+    {
+      zone: "PST (US West)",
+      time: new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(date),
+    },
+    {
+      zone: "GMT",
+      time: new Intl.DateTimeFormat("en-GB", {
+        timeZone: "GMT",
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(date),
+    },
+    {
+      zone: "UTC",
+      time: date.toISOString().replace("T", " ").slice(0, 19),
+    },
+  ];
+}
