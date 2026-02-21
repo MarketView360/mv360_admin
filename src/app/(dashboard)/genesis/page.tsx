@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { 
-  fetchSyncLogs, 
+  fetchGenesisLogs,
   triggerGenesisPipeline, 
   fetchGenesisStatus, 
   fetchGenesisBudget,
@@ -48,7 +48,9 @@ import {
   RefreshCw,
   Trash2,
   Bell,
-  BellRing
+  BellRing,
+  ChevronDown,
+  ChevronRight
 } from "lucide-react";
 
 interface SyncLog {
@@ -94,39 +96,54 @@ export default function GenesisPage() {
   const [logs, setLogs] = useState<SyncLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState<string | null>(null);
+  const [triggerError, setTriggerError] = useState<string | null>(null);
   const [statusData, setStatusData] = useState<Record<string, unknown> | null>(null);
   const [budgetData, setBudgetData] = useState<Record<string, unknown> | null>(null);
   const [alertsConfig, setAlertsConfig] = useState<{ webhook_url_set: boolean; webhook_url_prefix: string } | null>(null);
   const [queueState, setQueueState] = useState<any>(null);
   const [failedJobs, setFailedJobs] = useState<any[]>([]);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
+
+  const sessionRef = useRef(session);
+  const isRunningRef = useRef(false);
+  useEffect(() => { sessionRef.current = session; }, [session]);
+  useEffect(() => {
+    isRunningRef.current = (statusData as any)?.data?.running === true;
+  }, [statusData]);
+
+  const pollLive = async () => {
+    const token = sessionRef.current?.access_token;
+    if (!token) return;
+    const [status, queue, failed, syncLogs] = await Promise.all([
+      fetchGenesisStatus(token).catch(() => null),
+      fetchGenesisQueueState(token).catch(() => null),
+      fetchGenesisFailedQueue(token).catch(() => []),
+      fetchGenesisLogs(token, 50).catch(() => null),
+    ]);
+    setStatusData(status);
+    setQueueState(queue);
+    setFailedJobs(Array.isArray(failed) ? failed : []);
+    if (syncLogs) setLogs(syncLogs);
+  };
 
   const loadData = async () => {
     setLoading(true);
     try {
+      const token = sessionRef.current?.access_token;
       const [syncLogs, status, budget, alerts, queue, failed] = await Promise.all([
-        fetchSyncLogs(50),
-        session?.access_token
-          ? fetchGenesisStatus(session.access_token).catch(() => null)
-          : null,
-        session?.access_token
-          ? fetchGenesisBudget(session.access_token).catch(() => null)
-          : null,
-        session?.access_token
-          ? fetchGenesisAlertsConfig(session.access_token).catch(() => null)
-          : null,
-        session?.access_token
-          ? fetchGenesisQueueState(session.access_token).catch(() => null)
-          : null,
-        session?.access_token
-          ? fetchGenesisFailedQueue(session.access_token).catch(() => [])
-          : [],
+        token ? fetchGenesisLogs(token, 50).catch(() => []) : [],
+        token ? fetchGenesisStatus(token).catch(() => null) : null,
+        token ? fetchGenesisBudget(token).catch(() => null) : null,
+        token ? fetchGenesisAlertsConfig(token).catch(() => null) : null,
+        token ? fetchGenesisQueueState(token).catch(() => null) : null,
+        token ? fetchGenesisFailedQueue(token).catch(() => []) : [],
       ]);
       setLogs(syncLogs);
       setStatusData(status);
       setBudgetData(budget);
       setAlertsConfig(alerts);
       setQueueState(queue);
-      setFailedJobs(failed);
+      setFailedJobs(Array.isArray(failed) ? failed : []);
     } finally {
       setLoading(false);
     }
@@ -137,14 +154,30 @@ export default function GenesisPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Stable 5s polling interval — set up once on mount, reads running state via ref
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isRunningRef.current) pollLive();
+    }, 5000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleTrigger = async (type: "daily" | "weekly" | "full") => {
     if (!session?.access_token) return;
     setTriggering(type);
+    setTriggerError(null);
     try {
       await triggerGenesisPipeline(type, session.access_token);
       await loadData();
     } catch (err: unknown) {
-      console.error("Trigger failed:", err);
+      const msg = err instanceof Error ? err.message : String(err);
+      try {
+        const parsed = JSON.parse(msg);
+        setTriggerError(parsed.error ?? msg);
+      } catch {
+        setTriggerError(msg);
+      }
     } finally {
       setTriggering(null);
     }
@@ -280,6 +313,13 @@ export default function GenesisPage() {
           </Button>
         </div>
       </div>
+
+      {triggerError && (
+        <div className="flex items-center justify-between rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          <span>{triggerError}</span>
+          <button onClick={() => setTriggerError(null)} className="ml-4 text-destructive/70 hover:text-destructive">✕</button>
+        </div>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -425,19 +465,80 @@ export default function GenesisPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {statusData && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Live Status</CardTitle>
-              <CardDescription>From GET /genesis/status</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <pre className="rounded-lg bg-muted p-4 text-xs overflow-x-auto h-[300px]">
-                {JSON.stringify(statusData, null, 2)}
-              </pre>
-            </CardContent>
-          </Card>
-        )}
+        {statusData && (() => {
+          const d = (statusData as any)?.data ?? {};
+          const isRunning = d.running === true;
+          const budget = d.api_budget ?? {};
+          const svc = d.service_info ?? {};
+          return (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <div>
+                  <CardTitle>Live Status</CardTitle>
+                  <CardDescription>Genesis pipeline engine</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isRunning ? (
+                    <>
+                      <span className="relative flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                      </span>
+                      <span className="text-xs font-medium text-emerald-500">Running</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="relative flex h-3 w-3">
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-muted-foreground/40"></span>
+                      </span>
+                      <span className="text-xs font-medium text-muted-foreground">Idle</span>
+                    </>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="rounded-lg bg-muted p-3">
+                    <p className="text-xs text-muted-foreground">Processed</p>
+                    <p className="text-xl font-bold">{(d.processed ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted p-3">
+                    <p className="text-xs text-muted-foreground">Failed</p>
+                    <p className={`text-xl font-bold ${(d.failed ?? 0) > 0 ? "text-destructive" : ""}`}>{(d.failed ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted p-3">
+                    <p className="text-xs text-muted-foreground">Total Tickers</p>
+                    <p className="text-xl font-bold">{(d.total_tickers ?? 0).toLocaleString()}</p>
+                  </div>
+                </div>
+                {isRunning && (d.total_tickers ?? 0) > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Progress</span>
+                      <span>{Math.round(((d.processed ?? 0) / d.total_tickers) * 100)}%</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                        style={{ width: `${Math.min(100, Math.round(((d.processed ?? 0) / d.total_tickers) * 100))}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground">API Used Today</p>
+                    <p className="font-medium">{(budget.used ?? 0).toLocaleString()} / {(budget.limit ?? 0).toLocaleString()}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground">Uptime</p>
+                    <p className="font-medium font-mono">{svc.uptime ?? "—"}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })()}
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -445,11 +546,20 @@ export default function GenesisPage() {
               <CardTitle>Queue Management</CardTitle>
               <CardDescription>Live job processing state</CardDescription>
             </div>
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={handleRetryAll} disabled={failedJobs.length === 0}>
+            <div className="flex items-center gap-2">
+              {(statusData as any)?.data?.running && (
+                <span className="flex items-center gap-1 text-xs text-blue-500">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                  </span>
+                  Live
+                </span>
+              )}
+              <Button size="sm" variant="outline" onClick={handleRetryAll} disabled={(failedJobs?.length ?? 0) === 0}>
                 Retry All Failed
               </Button>
-              <Button size="sm" variant="destructive" onClick={handleClearFailed} disabled={failedJobs.length === 0}>
+              <Button size="sm" variant="destructive" onClick={handleClearFailed} disabled={(failedJobs?.length ?? 0) === 0}>
                 Clear Failed
               </Button>
             </div>
@@ -463,7 +573,15 @@ export default function GenesisPage() {
                     <div className="text-muted-foreground text-xs">Pending</div>
                   </div>
                   <div className="rounded-lg bg-blue-500/10 p-2">
-                    <div className="font-bold text-lg text-blue-600">{queueState.summary?.processing ?? 0}</div>
+                    <div className="font-bold text-lg text-blue-600 flex items-center justify-center gap-1">
+                      {(queueState.summary?.processing ?? 0) > 0 && (
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                        </span>
+                      )}
+                      {queueState.summary?.processing ?? 0}
+                    </div>
                     <div className="text-blue-600/70 text-xs">Processing</div>
                   </div>
                   <div className="rounded-lg bg-emerald-500/10 p-2">
@@ -522,9 +640,26 @@ export default function GenesisPage() {
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Sync Log History</CardTitle>
-          <CardDescription>Last 50 pipeline runs</CardDescription>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Sync Log History</CardTitle>
+            <CardDescription>Last 50 pipeline runs</CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            {(statusData as any)?.data?.running && (
+              <span className="flex items-center gap-1 text-xs text-emerald-500">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                Auto-refreshing
+              </span>
+            )}
+            <Button size="sm" variant="outline" onClick={loadData} disabled={loading}>
+              <RefreshCw className={`h-3 w-3 mr-1 ${loading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -558,28 +693,90 @@ export default function GenesisPage() {
                       : `${(log.duration_ms / 1000).toFixed(1)}s`
                     : "—";
 
+                  const isActive = log.status === "running";
+                  const hasSamples = Array.isArray((log.metadata as any)?.failure_samples) && (log.metadata as any).failure_samples.length > 0;
+                  const isExpanded = expandedLogId === log.id;
+                  const canExpand = hasSamples || !!log.error_message;
                   return (
-                    <TableRow key={log.id}>
-                      <TableCell className="font-medium capitalize">
-                        {log.sync_type}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={log.status} />
-                      </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">
-                        {new Date(log.started_at).toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-xs tabular-nums">{durationStr}</TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">
-                        {log.records_processed?.toLocaleString() ?? "—"}
-                      </TableCell>
-                      <TableCell className="text-right text-xs tabular-nums">
-                        {log.records_failed ?? 0}
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate text-xs text-destructive">
-                        {log.error_message || "—"}
-                      </TableCell>
-                    </TableRow>
+                    <Fragment key={log.id}>
+                      <TableRow
+                        className={`${isActive ? "bg-emerald-500/5" : ""} ${canExpand ? "cursor-pointer hover:bg-muted/50" : ""}`}
+                        onClick={() => canExpand && setExpandedLogId(isExpanded ? null : log.id)}
+                      >
+                        <TableCell className="font-medium capitalize">
+                          <div className="flex items-center gap-1">
+                            {canExpand && (
+                              isExpanded
+                                ? <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                                : <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                            )}
+                            {log.sync_type}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {isActive ? (
+                            <Badge variant="default" className="bg-emerald-600 text-white">
+                              <span className="relative flex h-2 w-2 mr-1">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
+                              </span>
+                              running
+                            </Badge>
+                          ) : (
+                            <StatusBadge status={log.status} />
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">
+                          {new Date(log.started_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-xs tabular-nums">
+                          {isActive
+                            ? `${Math.round((Date.now() - new Date(log.started_at).getTime()) / 1000)}s elapsed`
+                            : durationStr}
+                        </TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">
+                          {log.records_processed?.toLocaleString() ?? "—"}
+                        </TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">
+                          {(log.records_failed ?? 0) > 0 ? (
+                            <span className="text-destructive font-medium">{log.records_failed}</span>
+                          ) : 0}
+                        </TableCell>
+                        <TableCell className="max-w-[200px] truncate text-xs text-destructive">
+                          {log.error_message || "—"}
+                        </TableCell>
+                      </TableRow>
+                      {isExpanded && (
+                        <TableRow>
+                          <TableCell colSpan={7} className="bg-muted/30 p-0">
+                            <div className="p-4 space-y-3">
+                              {log.error_message && (
+                                <div>
+                                  <p className="text-xs font-semibold text-destructive mb-1">Pipeline Error</p>
+                                  <p className="text-xs font-mono bg-destructive/10 rounded p-2 text-destructive">{log.error_message}</p>
+                                </div>
+                              )}
+                              {hasSamples && (
+                                <div>
+                                  <p className="text-xs font-semibold mb-2">
+                                    Failed Tickers ({(log.metadata as any).failure_samples.length}
+                                    {(log.metadata as any).failure_samples_truncated ? "+ more" : ""})
+                                  </p>
+                                  <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                                    {(log.metadata as any).failure_samples.map((s: any, i: number) => (
+                                      <div key={i} className="flex gap-3 text-xs font-mono bg-background rounded px-3 py-1.5 border">
+                                        <span className="font-semibold w-24 shrink-0 text-foreground">{s.ticker}</span>
+                                        <span className="text-destructive truncate">{s.error || "unknown error"}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </Fragment>
                   );
                 })}
               </TableBody>

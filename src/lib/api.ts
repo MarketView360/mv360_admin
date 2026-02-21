@@ -584,6 +584,29 @@ export async function clearGenesisFailedJobs(token: string) {
   return res.json();
 }
 
+export async function fetchGenesisLogs(token: string, limit = 50) {
+  const res = await fetch(`${GENESIS_URL}/admin/logs?limit=${limit}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
+    },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  const json = await res.json();
+  return (json.logs ?? []).map((l: any) => ({
+    id: String(l.id),
+    sync_type: l.sync_type,
+    status: l.status,
+    started_at: l.started_at,
+    completed_at: l.completed_at ?? null,
+    duration_ms: l.duration_ms ?? null,
+    records_processed: l.records_processed ?? null,
+    records_failed: l.records_failed ?? 0,
+    error_message: l.error_message ?? null,
+    metadata: l.metadata ?? null,
+  }));
+}
+
 export async function fetchGenesisAlertsConfig(token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/alerts/config`, {
     headers: { 
