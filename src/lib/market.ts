@@ -10,7 +10,7 @@ export function isMarketHoliday(date: Date): boolean {
   const year = date.getFullYear();
   const month = date.getMonth();
   const day = date.getDate();
-  
+
   const holidays = [
     new Date(year, 0, 1),
     new Date(year, 0, 15),
@@ -22,7 +22,7 @@ export function isMarketHoliday(date: Date): boolean {
     new Date(year, 10, 28),
     new Date(year, 11, 25),
   ];
-  
+
   return holidays.some(
     (h) => h.getFullYear() === year && h.getMonth() === month && h.getDate() === day
   );
@@ -32,15 +32,15 @@ export function getMarketStatus(now: Date = new Date()): MarketStatus {
   const estTime = new Date(
     now.toLocaleString("en-US", { timeZone: "America/New_York" })
   );
-  
+
   const dayOfWeek = estTime.getDay();
   const hours = estTime.getHours();
   const minutes = estTime.getMinutes();
   const timeInMinutes = hours * 60 + minutes;
-  
+
   const marketOpen = 9 * 60 + 30;
   const marketClose = 16 * 60;
-  
+
   if (dayOfWeek === 0 || dayOfWeek === 6) {
     return {
       isOpen: false,
@@ -50,7 +50,7 @@ export function getMarketStatus(now: Date = new Date()): MarketStatus {
       reason: "Weekend",
     };
   }
-  
+
   if (isMarketHoliday(estTime)) {
     return {
       isOpen: false,
@@ -60,7 +60,7 @@ export function getMarketStatus(now: Date = new Date()): MarketStatus {
       reason: "Market Holiday",
     };
   }
-  
+
   if (timeInMinutes >= marketOpen && timeInMinutes < marketClose) {
     const closeTime = new Date(estTime);
     closeTime.setHours(16, 0, 0, 0);
@@ -71,7 +71,7 @@ export function getMarketStatus(now: Date = new Date()): MarketStatus {
       timezone: "America/New_York",
     };
   }
-  
+
   return {
     isOpen: false,
     nextOpen: getNextMarketOpen(estTime),
@@ -84,23 +84,26 @@ export function getMarketStatus(now: Date = new Date()): MarketStatus {
 function getNextMarketOpen(fromDate: Date): Date {
   const next = new Date(fromDate);
   next.setHours(9, 30, 0, 0);
-  
+
   do {
     next.setDate(next.getDate() + 1);
   } while (next.getDay() === 0 || next.getDay() === 6 || isMarketHoliday(next));
-  
+
   return next;
 }
 
 export function formatTimeRemaining(targetDate: Date): string {
   const now = new Date();
-  const diff = targetDate.getTime() - now.getTime();
-  
+  // Since targetDate is constructed from `estTime` in getMarketStatus, 
+  // we must compare it to the current ET time in the same local-Date space.
+  const estNow = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+  const diff = targetDate.getTime() - estNow.getTime();
+
   if (diff <= 0) return "Now";
-  
+
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  
+
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
   }
