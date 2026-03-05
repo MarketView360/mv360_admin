@@ -921,7 +921,10 @@ export async function fetchDashboardTickerStats(): Promise<DashboardTickerStats>
 
 export async function fetchDataQuality(token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/data-quality`, {
-    headers: { "X-Admin-Secret": token },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
+    },
   });
   if (!res.ok) throw new Error(`data-quality fetch failed: ${res.status}`);
   return res.json();
@@ -930,7 +933,10 @@ export async function fetchDataQuality(token: string) {
 export async function runDataQualityValidation(token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/data-quality/validate`, {
     method: "POST",
-    headers: { "X-Admin-Secret": token },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
+    },
   });
   if (!res.ok) throw new Error(`validate failed: ${res.status}`);
   return res.json();
