@@ -115,7 +115,7 @@ export async function fetchUsers() {
     const screenActivity = screenLastActivity.get(p.id);
     const watchlistActivity = watchlistLastActivity.get(p.id);
     let lastActivity = p.updated_at;
-    
+
     if (screenActivity && (!lastActivity || screenActivity > lastActivity)) lastActivity = screenActivity;
     if (watchlistActivity && (!lastActivity || watchlistActivity > lastActivity)) lastActivity = watchlistActivity;
 
@@ -156,12 +156,12 @@ export async function toggleTempSuspend(userId: string, suspend: boolean) {
     .update({ temp_suspend: suspend })
     .eq("id", userId)
     .select();
-  
+
   if (error) {
     console.error("Error toggling temp suspension:", error);
     throw new Error(error.message || "Failed to update suspension status");
   }
-  
+
   return data?.[0] || null;
 }
 
@@ -171,12 +171,12 @@ export async function togglePermSuspend(userId: string, suspend: boolean) {
     .update({ perm_suspend: suspend })
     .eq("id", userId)
     .select();
-  
+
   if (error) {
     console.error("Error toggling perm suspension:", error);
     throw new Error(error.message || "Failed to update suspension status");
   }
-  
+
   return data?.[0] || null;
 }
 
@@ -186,12 +186,12 @@ export async function deleteUserAccount(userId: string) {
     .from("user_profiles")
     .delete()
     .eq("id", userId);
-  
+
   if (profileError) {
     console.error("Error deleting user profile:", profileError);
     throw new Error(profileError.message || "Failed to delete user profile");
   }
-  
+
   // Then delete from auth (if using Supabase auth admin)
   try {
     const { error: authError } = await supabase.auth.admin.deleteUser(userId);
@@ -491,7 +491,7 @@ export async function triggerGenesisPipeline(
 
 export async function fetchGenesisStatus(token: string) {
   const res = await fetch(`${GENESIS_URL}/genesis/status`, {
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
       "X-Pipeline-Secret": process.env.NEXT_PUBLIC_PIPELINE_SECRET || "dev-pipeline-secret"
     },
@@ -502,7 +502,7 @@ export async function fetchGenesisStatus(token: string) {
 
 export async function fetchGenesisBudget(token: string) {
   const res = await fetch(`${GENESIS_URL}/genesis/budget`, {
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
       "X-Pipeline-Secret": process.env.NEXT_PUBLIC_PIPELINE_SECRET || "dev-pipeline-secret"
     },
@@ -517,7 +517,7 @@ export async function fetchGenesisBudget(token: string) {
 
 export async function fetchGenesisDashboard(token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/dashboard`, {
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
     },
@@ -528,7 +528,7 @@ export async function fetchGenesisDashboard(token: string) {
 
 export async function fetchGenesisQueueState(token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/queue`, {
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
     },
@@ -539,7 +539,7 @@ export async function fetchGenesisQueueState(token: string) {
 
 export async function fetchGenesisFailedQueue(token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/queue/failed`, {
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
     },
@@ -551,7 +551,7 @@ export async function fetchGenesisFailedQueue(token: string) {
 export async function retryGenesisFailedJob(id: number, token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/queue/${id}/retry`, {
     method: "POST",
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
     },
@@ -563,7 +563,7 @@ export async function retryGenesisFailedJob(id: number, token: string) {
 export async function retryAllGenesisFailedJobs(token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/queue/retry-all-failed`, {
     method: "POST",
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
     },
@@ -575,7 +575,7 @@ export async function retryAllGenesisFailedJobs(token: string) {
 export async function clearGenesisFailedJobs(token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/queue/clear-failed`, {
     method: "DELETE",
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
     },
@@ -609,7 +609,7 @@ export async function fetchGenesisLogs(token: string, limit = 50) {
 
 export async function fetchGenesisAlertsConfig(token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/alerts/config`, {
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
     },
@@ -621,7 +621,7 @@ export async function fetchGenesisAlertsConfig(token: string) {
 export async function setGenesisAlertsConfig(webhookUrl: string, token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/alerts/config`, {
     method: "PUT",
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
       "Content-Type": "application/json",
@@ -634,7 +634,7 @@ export async function setGenesisAlertsConfig(webhookUrl: string, token: string) 
 
 export async function testGenesisAlerts(token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/alerts/test`, {
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
     },
@@ -686,11 +686,11 @@ export interface MaintenanceWindow {
 
 export async function fetchBlogPosts(includeTrash = false) {
   let query = supabase.schema("admin").from("blog").select("*");
-  
+
   if (!includeTrash) {
     query = query.neq("status", "trash");
   }
-  
+
   const { data, error } = await query.order("date", { ascending: false });
   if (error) throw error;
   return data as BlogPost[];
@@ -740,11 +740,11 @@ export async function deleteBlogPostPermanently(id: number) {
 
 export async function fetchAnnouncements(includeTrash = false) {
   let query = supabase.schema("admin").from("announcements").select("*");
-  
+
   if (!includeTrash) {
     query = query.neq("status", "trash");
   }
-  
+
   const { data, error } = await query.order("created_at", { ascending: false });
   if (error) throw error;
   return data as Announcement[];
@@ -794,11 +794,11 @@ export async function deleteAnnouncementPermanently(id: number) {
 
 export async function fetchMaintenanceWindows(includeTrash = false) {
   let query = supabase.schema("admin").from("maintenance").select("*");
-  
+
   if (!includeTrash) {
     query = query.neq("status", "trash");
   }
-  
+
   const { data, error } = await query.order("scheduled_at", { ascending: false });
   if (error) throw error;
   return data as MaintenanceWindow[];
@@ -875,7 +875,7 @@ export async function fetchLastSyncInfo(): Promise<LastSyncInfo> {
   if (error) throw error;
 
   const syncsByTable: Record<string, { lastSync: string | null; status: string | null; recordsProcessed: number | null }> = {};
-  
+
   (syncs || []).forEach((sync) => {
     if (!syncsByTable[sync.sync_type]) {
       syncsByTable[sync.sync_type] = {
@@ -916,3 +916,23 @@ export async function fetchDashboardTickerStats(): Promise<DashboardTickerStats>
     lastSyncTime: syncInfo.lastSyncTime,
   };
 }
+
+// ─── Data Quality (Genesis-backed) ────────────────────────────────────────────
+
+export async function fetchDataQuality(token: string) {
+  const res = await fetch(`${GENESIS_URL}/admin/data-quality`, {
+    headers: { "X-Admin-Secret": token },
+  });
+  if (!res.ok) throw new Error(`data-quality fetch failed: ${res.status}`);
+  return res.json();
+}
+
+export async function runDataQualityValidation(token: string) {
+  const res = await fetch(`${GENESIS_URL}/admin/data-quality/validate`, {
+    method: "POST",
+    headers: { "X-Admin-Secret": token },
+  });
+  if (!res.ok) throw new Error(`validate failed: ${res.status}`);
+  return res.json();
+}
+
