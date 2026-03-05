@@ -85,8 +85,20 @@ function getNextMarketOpen(fromDate: Date): Date {
   const next = new Date(fromDate);
   next.setHours(9, 30, 0, 0);
 
+  // If today's 9:30 AM is still in the future (pre-market), return it directly.
+  if (
+    next > fromDate &&
+    next.getDay() !== 0 &&
+    next.getDay() !== 6 &&
+    !isMarketHoliday(next)
+  ) {
+    return next;
+  }
+
+  // Otherwise, advance to the next valid trading day.
   do {
     next.setDate(next.getDate() + 1);
+    next.setHours(9, 30, 0, 0);
   } while (next.getDay() === 0 || next.getDay() === 6 || isMarketHoliday(next));
 
   return next;
