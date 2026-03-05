@@ -2,10 +2,10 @@
 
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { 
+import {
   fetchGenesisLogs,
-  triggerGenesisPipeline, 
-  fetchGenesisStatus, 
+  triggerGenesisPipeline,
+  fetchGenesisStatus,
   fetchGenesisBudget,
   fetchGenesisQueueState,
   fetchGenesisFailedQueue,
@@ -100,7 +100,7 @@ export default function GenesisPage() {
   const [statusData, setStatusData] = useState<Record<string, unknown> | null>(null);
   const [budgetData, setBudgetData] = useState<Record<string, unknown> | null>(null);
   const [alertsConfig, setAlertsConfig] = useState<{ webhook_url_set: boolean; webhook_url_prefix: string } | null>(null);
-  const [queueState, setQueueState] = useState<any>(null);
+  const [queueState, setQueueState] = useState<Array<{ job_type: string; status: string; count: number }> | null>(null);
   const [failedJobs, setFailedJobs] = useState<any[]>([]);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
@@ -160,7 +160,7 @@ export default function GenesisPage() {
       if (isRunningRef.current) pollLive();
     }, 5000);
     return () => clearInterval(interval);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleTrigger = async (type: "daily" | "weekly" | "full") => {
@@ -565,76 +565,112 @@ export default function GenesisPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {queueState ? (
-              <div className="space-y-4">
-                <div className="grid grid-cols-4 gap-2 text-center text-sm">
-                  <div className="rounded-lg bg-muted p-2">
-                    <div className="font-bold text-lg">{queueState.summary?.pending ?? 0}</div>
-                    <div className="text-muted-foreground text-xs">Pending</div>
-                  </div>
-                  <div className="rounded-lg bg-blue-500/10 p-2">
-                    <div className="font-bold text-lg text-blue-600 flex items-center justify-center gap-1">
-                      {(queueState.summary?.processing ?? 0) > 0 && (
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                        </span>
-                      )}
-                      {queueState.summary?.processing ?? 0}
-                    </div>
-                    <div className="text-blue-600/70 text-xs">Processing</div>
-                  </div>
-                  <div className="rounded-lg bg-emerald-500/10 p-2">
-                    <div className="font-bold text-lg text-emerald-600">{queueState.summary?.completed ?? 0}</div>
-                    <div className="text-emerald-600/70 text-xs">Completed</div>
-                  </div>
-                  <div className="rounded-lg bg-destructive/10 p-2">
-                    <div className="font-bold text-lg text-destructive">{queueState.summary?.failed ?? 0}</div>
-                    <div className="text-destructive/70 text-xs">Failed</div>
-                  </div>
-                </div>
+            {(() => {
+              // Transform the flat [{job_type, status, count}] array into a summary.
+              const dbSummary = queueState
+                ? queueState.reduce(
+                  (acc, e) => {
+                    if (e.status === "pending") acc.pending += e.count;
+                    else if (e.status === "processing") acc.processing += e.count;
+                    else if (e.status === "completed") acc.completed += e.count;
+                    else if (e.status === "failed") acc.failed += e.count;
+                    return acc;
+                  },
+                  { pending: 0, processing: 0, completed: 0, failed: 0 }
+                )
+                : null;
 
-                {failedJobs.length > 0 && (
-                  <div className="mt-4 border rounded-md overflow-hidden">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Ticker</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Error</TableHead>
-                          <TableHead className="text-right">Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {failedJobs.slice(0, 5).map((job) => (
-                          <TableRow key={job.id}>
-                            <TableCell className="font-medium">{job.ticker}</TableCell>
-                            <TableCell className="text-xs">{job.job_type}</TableCell>
-                            <TableCell className="text-xs text-destructive max-w-[150px] truncate" title={job.error_message}>
-                              {job.error_message}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button size="sm" variant="ghost" onClick={() => handleRetryJob(job.id)}>
-                                <RefreshCw className="h-3 w-3" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                    {failedJobs.length > 5 && (
-                      <div className="bg-muted p-2 text-center text-xs text-muted-foreground">
-                        + {failedJobs.length - 5} more failed jobs
+              // Fallback to in-memory orchestrator stats when DB queue is empty but pipeline is running.
+              const d = (statusData as any)?.data ?? {};
+              const isRunning = d.running === true;
+              const hasDbData = dbSummary && (dbSummary.pending + dbSummary.processing + dbSummary.completed + dbSummary.failed) > 0;
+              const summary = hasDbData
+                ? dbSummary
+                : isRunning
+                  ? {
+                    pending: Math.max(0, (d.total_tickers ?? 0) - (d.processed ?? 0) - (d.failed ?? 0)),
+                    processing: 1,
+                    completed: d.processed ?? 0,
+                    failed: d.failed ?? 0,
+                  }
+                  : null;
+
+              if (!summary) return (
+                <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
+                  Queue state unavailable
+                </div>
+              );
+
+              return (
+                <div className="space-y-4">
+                  {!hasDbData && isRunning && (
+                    <p className="text-xs text-muted-foreground">Showing in-memory orchestrator stats (DB queue not populated for in-process runs)</p>
+                  )}
+                  <div className="grid grid-cols-4 gap-2 text-center text-sm">
+                    <div className="rounded-lg bg-muted p-2">
+                      <div className="font-bold text-lg">{summary.pending}</div>
+                      <div className="text-muted-foreground text-xs">Pending</div>
+                    </div>
+                    <div className="rounded-lg bg-blue-500/10 p-2">
+                      <div className="font-bold text-lg text-blue-600 flex items-center justify-center gap-1">
+                        {summary.processing > 0 && (
+                          <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                          </span>
+                        )}
+                        {summary.processing}
                       </div>
-                    )}
+                      <div className="text-blue-600/70 text-xs">Processing</div>
+                    </div>
+                    <div className="rounded-lg bg-emerald-500/10 p-2">
+                      <div className="font-bold text-lg text-emerald-600">{summary.completed}</div>
+                      <div className="text-emerald-600/70 text-xs">Completed</div>
+                    </div>
+                    <div className="rounded-lg bg-destructive/10 p-2">
+                      <div className="font-bold text-lg text-destructive">{summary.failed}</div>
+                      <div className="text-destructive/70 text-xs">Failed</div>
+                    </div>
                   </div>
-                )}
-              </div>
-            ) : (
-              <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">
-                Queue state unavailable
-              </div>
-            )}
+
+                  {failedJobs.length > 0 && (
+                    <div className="mt-4 border rounded-md overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Ticker</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Error</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {failedJobs.slice(0, 5).map((job) => (
+                            <TableRow key={job.id}>
+                              <TableCell className="font-medium">{job.ticker}</TableCell>
+                              <TableCell className="text-xs">{job.job_type}</TableCell>
+                              <TableCell className="text-xs text-destructive max-w-[150px] truncate" title={job.error_message}>
+                                {job.error_message}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button size="sm" variant="ghost" onClick={() => handleRetryJob(job.id)}>
+                                  <RefreshCw className="h-3 w-3" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      {failedJobs.length > 5 && (
+                        <div className="bg-muted p-2 text-center text-xs text-muted-foreground">
+                          + {failedJobs.length - 5} more failed jobs
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </CardContent>
         </Card>
       </div>
