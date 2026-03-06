@@ -643,7 +643,7 @@ export async function testGenesisAlerts(token: string) {
   return res.json();
 }
 
-export async function fetchGenesisTickers(token: string, page = 1, limit = 100, status = "", sector = "", search = "") {
+export async function fetchGenesisTickers(token: string, page = 1, limit = 100, status = "", sector = "", search = "", exchange = "") {
   const params = new URLSearchParams({
     page: String(page),
     limit: String(limit),
@@ -651,6 +651,7 @@ export async function fetchGenesisTickers(token: string, page = 1, limit = 100, 
   if (status) params.append("status", status);
   if (sector) params.append("sector", sector);
   if (search) params.append("search", search);
+  if (exchange) params.append("exchange", exchange);
 
   const res = await fetch(`${GENESIS_URL}/admin/tickers?${params.toString()}`, {
     headers: {

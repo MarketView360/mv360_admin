@@ -50,8 +50,19 @@ import {
     AlertTriangle,
     CheckCircle2,
     XCircle,
-    Ban
+    Ban,
+    Clock,
+    TrendingUp,
+    TrendingDown
 } from "lucide-react";
+
+interface DashboardSummary {
+    total: number;
+    healthy: number;
+    stale: number;
+    errors: number;
+    review: number;
+}
 
 interface Ticker {
     id: number;
@@ -64,6 +75,11 @@ interface Ticker {
     status: string;
     fundamentals_last_ingested: string | null;
     last_updated: string | null;
+    last_price: number | null;
+    change_percent: number | null;
+    last_price_date: string | null;
+    total_data_points: number;
+    indicator_count: number;
 }
 
 export default function TickersPage() {
@@ -73,6 +89,8 @@ export default function TickersPage() {
     const [searchQuery, setSearchQuery] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
+    const [exchangeFilter, setExchangeFilter] = useState("all");
+    const [summary, setSummary] = useState<DashboardSummary | null>(null);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [totalItems, setTotalItems] = useState(0);
@@ -117,13 +135,15 @@ export default function TickersPage() {
                 100,
                 statusFilter === "all" ? "" : statusFilter,
                 "", // sector
-                search
+                search,
+                exchangeFilter === "all" ? "" : exchangeFilter
             );
 
             console.log("[Tickers] API resp:", resp);
 
             if (resp && resp.tickers) {
                 setTickers(resp.tickers);
+                if (resp.summary) setSummary(resp.summary);
                 setTotalPages(resp.total_pages || 1);
                 setTotalItems(resp.total || 0);
                 setError(null);
@@ -146,7 +166,7 @@ export default function TickersPage() {
     useEffect(() => {
         loadData(page, debouncedSearch);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [session, page, statusFilter, debouncedSearch]); // re-run when filters or search change
+    }, [session, page, statusFilter, exchangeFilter, debouncedSearch]); // re-run when filters or search change
 
     const handleForceRefresh = async (symbol: string) => {
         const token = sessionRef.current?.access_token;
@@ -211,25 +231,27 @@ export default function TickersPage() {
         (t.name && t.name.toLowerCase().includes(searchQuery.toLowerCase()))
     );
     // Status badge helper
-    const getStatusBadge = (status: string) => {
-        switch (status) {
+    const getStatusBadge = (ticker: Ticker) => {
+        // If active but stale, color it as Stale (Warning)
+        const isStale = ticker.status === 'active' &&
+            (!ticker.last_updated || new Date(ticker.last_updated) < new Date(Date.now() - 3 * 24 * 60 * 60 * 1000));
+
+        switch (ticker.status) {
             case "active":
-                return <Badge className="bg-green-600 hover:bg-green-700">Active</Badge>;
+                if (isStale) return <Badge className="bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 border-yellow-500/20">Stale</Badge>;
+                return <Badge className="bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 border-emerald-500/20">Healthy</Badge>;
             case "needs_review":
-                return (
-                    <div className="flex flex-col gap-1 items-start">
-                        <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Needs Review</Badge>
-                        <span className="text-xs text-muted-foreground">Pending manual validation</span>
-                    </div>
-                );
+                return <Badge variant="secondary" className="bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20">Needs Review</Badge>;
+            case "error":
+                return <Badge variant="secondary" className="bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20 text-xs text-center border">Error</Badge>;
             case "delisted":
                 return <Badge variant="destructive">Delisted</Badge>;
             case "inactive":
                 return <Badge variant="secondary">Inactive</Badge>;
             case "ignored":
-                return <Badge className="bg-slate-500/10 text-slate-500 border-slate-500/20"><Ban className="mr-1 h-3 w-3" /> Ignored</Badge>;
+                return <Badge className="bg-slate-500/10 text-slate-500 border-slate-500/20 hover:bg-slate-500/20"><Ban className="mr-1 h-3 w-3" /> Ignored</Badge>;
             default:
-                return <Badge variant="outline">{status}</Badge>;
+                return <Badge variant="outline">{ticker.status}</Badge>;
         }
     };
 
@@ -252,6 +274,32 @@ export default function TickersPage() {
                 </div>
             </div>
 
+            {summary && (
+                <div className="flex flex-wrap gap-2 mb-2 items-center justify-end">
+                    <div className="flex bg-slate-900 text-slate-100 rounded-md shadow px-3 py-1.5 border border-slate-800 text-sm font-medium gap-3">
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-muted-foreground">Total:</span> <span>{summary.total}</span>
+                        </div>
+                        <div className="w-px h-4 bg-slate-700 my-auto"></div>
+                        <div className="flex items-center gap-1.5 text-emerald-400">
+                            <span>Healthy:</span> <span>{summary.healthy}</span>
+                        </div>
+                        <div className="w-px h-4 bg-slate-700 my-auto"></div>
+                        <div className="flex items-center gap-1.5 text-yellow-500">
+                            <span>Stale:</span> <span>{summary.stale}</span>
+                        </div>
+                        <div className="w-px h-4 bg-slate-700 my-auto"></div>
+                        <div className="flex items-center gap-1.5 text-red-400">
+                            <span>Errors:</span> <span>{summary.errors}</span>
+                        </div>
+                        <div className="w-px h-4 bg-slate-700 my-auto"></div>
+                        <div className="flex items-center gap-1.5 text-blue-400">
+                            <span>Review:</span> <span>{summary.review}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <Card>
                 <CardHeader>
                     <div className="flex flex-col md:flex-row gap-4 md:items-center justify-between">
@@ -264,20 +312,37 @@ export default function TickersPage() {
                                 className="pl-9"
                             />
                         </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm text-muted-foreground">Status:</span>
-                            <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPage(1); }}>
-                                <SelectTrigger className="w-[180px]">
-                                    <SelectValue placeholder="All Status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Status</SelectItem>
-                                    <SelectItem value="active">Active</SelectItem>
-                                    <SelectItem value="needs_review">Needs Review</SelectItem>
-                                    <SelectItem value="delisted">Delisted</SelectItem>
-                                    <SelectItem value="ignored">Ignored</SelectItem>
-                                </SelectContent>
-                            </Select>
+                        <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">Status:</span>
+                                <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPage(1); }}>
+                                    <SelectTrigger className="w-[140px]">
+                                        <SelectValue placeholder="All Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Status</SelectItem>
+                                        <SelectItem value="active">Active</SelectItem>
+                                        <SelectItem value="needs_review">Needs Review</SelectItem>
+                                        <SelectItem value="error">Error</SelectItem>
+                                        <SelectItem value="delisted">Delisted</SelectItem>
+                                        <SelectItem value="ignored">Ignored</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-muted-foreground">Exchange:</span>
+                                <Select value={exchangeFilter} onValueChange={(val) => { setExchangeFilter(val); setPage(1); }}>
+                                    <SelectTrigger className="w-[140px]">
+                                        <SelectValue placeholder="All Exchanges" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Exchanges</SelectItem>
+                                        <SelectItem value="US">US (Misc)</SelectItem>
+                                        <SelectItem value="NASDAQ">NASDAQ</SelectItem>
+                                        <SelectItem value="NYSE">NYSE</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                     </div>
                 </CardHeader>
@@ -291,6 +356,8 @@ export default function TickersPage() {
                                     <TableHead>Exchange</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Last Ingested</TableHead>
+                                    <TableHead>Last Price</TableHead>
+                                    <TableHead>Data Points</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -311,20 +378,56 @@ export default function TickersPage() {
                                 ) : (
                                     filteredTickers.map((ticker) => (
                                         <TableRow key={ticker.id}>
-                                            <TableCell className="font-mono font-medium">{ticker.ticker}</TableCell>
+                                            <TableCell className="font-mono font-medium">
+                                                <div className="flex items-center gap-1.5">
+                                                    {ticker.ticker}
+                                                    {(ticker.status === 'error' || ticker.status === 'needs_review' || (ticker.status === 'active' && ticker.indicator_count < 10) || ticker.status === 'stale') && (
+                                                        <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+                                                    )}
+                                                </div>
+                                            </TableCell>
                                             <TableCell className="max-w-[200px] truncate" title={ticker.name || ""}>{ticker.name || "-"}</TableCell>
                                             <TableCell>{ticker.exchange}</TableCell>
-                                            <TableCell>{getStatusBadge(ticker.status)}</TableCell>
+                                            <TableCell>{getStatusBadge(ticker)}</TableCell>
+                                            <TableCell className="w-[180px]">
+                                                <div className="flex flex-col gap-1.5">
+                                                    <div className="grid grid-cols-[40px_1fr] items-center gap-2">
+                                                        <span className="text-muted-foreground text-[12px]">Daily:</span>
+                                                        <span className="font-medium text-slate-100 bg-slate-800/80 border border-slate-700/60 rounded px-2 py-[1px] truncate text-center text-[12px]">{formatRelative(ticker.last_price_date)}</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-[40px_1fr] items-center gap-2">
+                                                        <span className="text-muted-foreground text-[12px]">Fund:</span>
+                                                        <span className="font-medium text-slate-100 bg-slate-800/80 border border-slate-700/60 rounded px-2 py-[1px] truncate text-center text-[12px]">{formatRelative(ticker.fundamentals_last_ingested)}</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-[40px_1fr] items-center gap-2">
+                                                        <span className="text-muted-foreground text-[12px]">Meta:</span>
+                                                        <span className="font-medium text-slate-100 bg-slate-800/80 border border-slate-700/60 rounded px-2 py-[1px] truncate text-center text-[12px]">{formatRelative(ticker.last_updated)}</span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell className="w-[120px]">
+                                                {ticker.last_price !== null ? (
+                                                    <div className="flex flex-col gap-1 items-start">
+                                                        <span className="font-bold text-[15px] text-slate-100">${ticker.last_price.toFixed(2)}</span>
+                                                        <span className={`text-[13px] flex items-center gap-1 font-medium ${ticker.change_percent && ticker.change_percent > 0 ? 'text-emerald-500' : (ticker.change_percent && ticker.change_percent < 0 ? 'text-red-500' : 'text-slate-400')}`}>
+                                                            {ticker.change_percent && ticker.change_percent > 0 ? (
+                                                                <TrendingUp className="w-3.5 h-3.5" />
+                                                            ) : ticker.change_percent && ticker.change_percent < 0 ? (
+                                                                <TrendingDown className="w-3.5 h-3.5" />
+                                                            ) : (
+                                                                <span className="w-3.5 h-[2px] bg-slate-400 rounded-full" />
+                                                            )}
+                                                            {ticker.change_percent ? (ticker.change_percent > 0 ? `+${ticker.change_percent.toFixed(2)}` : ticker.change_percent.toFixed(2)) : '0.00'}%
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-muted-foreground block">-</span>
+                                                )}
+                                            </TableCell>
                                             <TableCell>
-                                                <div className="flex flex-col text-xs gap-1">
-                                                    <div className="flex justify-between gap-4">
-                                                        <span className="text-muted-foreground">Fundamentals:</span>
-                                                        <span className="font-medium">{formatRelative(ticker.fundamentals_last_ingested)}</span>
-                                                    </div>
-                                                    <div className="flex justify-between gap-4">
-                                                        <span className="text-muted-foreground">Metadata:</span>
-                                                        <span className="font-medium">{formatRelative(ticker.last_updated)}</span>
-                                                    </div>
+                                                <div className="flex flex-col gap-0.5 items-start text-xs text-muted-foreground">
+                                                    <span>{ticker.total_data_points ? ticker.total_data_points.toLocaleString() : "0"}</span>
+                                                    <span>{ticker.indicator_count} indicators</span>
                                                 </div>
                                             </TableCell>
                                             <TableCell className="text-right">
