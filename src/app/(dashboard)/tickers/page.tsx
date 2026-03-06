@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import {
     fetchGenesisTickers,
@@ -54,13 +54,16 @@ import {
 } from "lucide-react";
 
 interface Ticker {
-    symbol: string;
-    name: string;
+    id: number;
+    ticker: string;
+    name: string | null;
     exchange: string;
-    type: string;
+    code: string;
     status: string;
-    created_at: string;
-    updated_at: string;
+    sector: string | null;
+    industry: string | null;
+    fundamentals_last_ingested: string | null;
+    eod_history_from: string | null;
 }
 
 export default function TickersPage() {
@@ -71,6 +74,11 @@ export default function TickersPage() {
     const [statusFilter, setStatusFilter] = useState("all");
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [totalItems, setTotalItems] = useState(0);
+    const [error, setError] = useState<string | null>(null);
+
+    const sessionRef = useRef(session);
+    useEffect(() => { sessionRef.current = session; }, [session]);
 
     // Actions state
     const [isRefreshing, setIsRefreshing] = useState<string | null>(null);
@@ -86,27 +94,35 @@ export default function TickersPage() {
     });
 
     const loadData = async (currentPage = page) => {
-        if (!session?.access_token) return;
+        const token = sessionRef.current?.access_token;
+        if (!token) return;
         setLoading(true);
         try {
             const resp = await fetchGenesisTickers(
-                session.access_token,
+                token,
                 currentPage,
-                50,
+                100,
                 statusFilter === "all" ? "" : statusFilter
             );
 
-            // The API currently returns an array directly, or an object with data/total.
-            // We'll handle both just in case:
-            if (Array.isArray(resp)) {
+            console.log("[Tickers] API resp:", resp);
+
+            if (resp && resp.tickers) {
+                setTickers(resp.tickers);
+                setTotalPages(resp.total_pages || 1);
+                setTotalItems(resp.total || 0);
+                setError(null);
+            } else if (Array.isArray(resp)) {
                 setTickers(resp);
                 setTotalPages(1);
-            } else if (resp.data) {
-                setTickers(resp.data);
-                setTotalPages(resp.total_pages || 1);
+                setTotalItems(resp.length);
+                setError(null);
+            } else {
+                setError(`Unexpected response format: ${JSON.stringify(resp).slice(0, 200)}`);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error("Failed to fetch tickers:", err);
+            setError(err.message || "Failed to fetch tickers");
         } finally {
             setLoading(false);
         }
@@ -115,13 +131,14 @@ export default function TickersPage() {
     useEffect(() => {
         loadData(page);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [session, page, statusFilter]);
+    }, [session, page, statusFilter]); // re-run when session becomes available
 
     const handleForceRefresh = async (symbol: string) => {
-        if (!session?.access_token) return;
+        const token = sessionRef.current?.access_token;
+        if (!token) return;
         setIsRefreshing(symbol);
         try {
-            await refreshGenesisTicker(symbol, session.access_token);
+            await refreshGenesisTicker(symbol, token);
             alert(`Force refresh initiated for ${symbol}`);
         } catch (err: any) {
             alert(`Error: ${err.message}`);
@@ -131,9 +148,10 @@ export default function TickersPage() {
     };
 
     const handleStatusChangeSubmit = async () => {
-        if (!session?.access_token || !statusDialog.ticker) return;
+        const token = sessionRef.current?.access_token;
+        if (!token || !statusDialog.ticker) return;
         try {
-            await setGenesisTickerStatus(statusDialog.ticker.symbol, statusDialog.newStatus, session.access_token);
+            await setGenesisTickerStatus(statusDialog.ticker.ticker, statusDialog.newStatus, token);
             setStatusDialog({ open: false, ticker: null, newStatus: "" });
             loadData();
         } catch (err: any) {
@@ -142,9 +160,10 @@ export default function TickersPage() {
     };
 
     const handleAddSubmit = async () => {
-        if (!session?.access_token || !newTickerForm.symbol) return;
+        const token = sessionRef.current?.access_token;
+        if (!token || !newTickerForm.symbol) return;
         try {
-            await addGenesisTicker(newTickerForm.symbol.toUpperCase(), newTickerForm.exchange, session.access_token);
+            await addGenesisTicker(newTickerForm.symbol.toUpperCase(), newTickerForm.exchange, token);
             setAddDialog(false);
             setNewTickerForm({ symbol: "", exchange: "US" });
             loadData();
@@ -154,18 +173,25 @@ export default function TickersPage() {
     };
 
     const filteredTickers = tickers.filter(t =>
-        t.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.name?.toLowerCase().includes(searchQuery.toLowerCase())
+        t.ticker.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.name && t.name.toLowerCase().includes(searchQuery.toLowerCase()))
     );
-
+    // Status badge helper
     const getStatusBadge = (status: string) => {
         switch (status) {
             case "active":
-                return <Badge className="bg-green-500/10 text-green-500 border-green-500/20"><CheckCircle2 className="mr-1 h-3 w-3" /> Active</Badge>;
+                return <Badge className="bg-green-600 hover:bg-green-700">Active</Badge>;
             case "needs_review":
-                return <Badge className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20"><AlertTriangle className="mr-1 h-3 w-3" /> Needs Review</Badge>;
+                return (
+                    <div className="flex flex-col gap-1 items-start">
+                        <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Needs Review</Badge>
+                        <span className="text-xs text-muted-foreground">Pending manual validation</span>
+                    </div>
+                );
             case "delisted":
-                return <Badge className="bg-red-500/10 text-red-500 border-red-500/20"><XCircle className="mr-1 h-3 w-3" /> Delisted</Badge>;
+                return <Badge variant="destructive">Delisted</Badge>;
+            case "inactive":
+                return <Badge variant="secondary">Inactive</Badge>;
             case "ignored":
                 return <Badge className="bg-slate-500/10 text-slate-500 border-slate-500/20"><Ban className="mr-1 h-3 w-3" /> Ignored</Badge>;
             default:
@@ -250,22 +276,22 @@ export default function TickersPage() {
                                     </TableRow>
                                 ) : (
                                     filteredTickers.map((ticker) => (
-                                        <TableRow key={ticker.symbol}>
-                                            <TableCell className="font-mono font-medium">{ticker.symbol}</TableCell>
-                                            <TableCell className="max-w-[200px] truncate" title={ticker.name}>{ticker.name || "-"}</TableCell>
+                                        <TableRow key={ticker.id}>
+                                            <TableCell className="font-mono font-medium">{ticker.ticker}</TableCell>
+                                            <TableCell className="max-w-[200px] truncate" title={ticker.name || ""}>{ticker.name || "-"}</TableCell>
                                             <TableCell>{ticker.exchange}</TableCell>
-                                            <TableCell>{ticker.type || "Common Stock"}</TableCell>
+                                            <TableCell>{ticker.sector || "-"}</TableCell>
                                             <TableCell>{getStatusBadge(ticker.status)}</TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-2">
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        disabled={isRefreshing === ticker.symbol}
-                                                        onClick={() => handleForceRefresh(ticker.symbol)}
+                                                        disabled={isRefreshing === ticker.ticker}
+                                                        onClick={() => handleForceRefresh(ticker.ticker)}
                                                         title="Force Refresh Data"
                                                     >
-                                                        <RefreshCw className={`h-4 w-4 ${isRefreshing === ticker.symbol ? "animate-spin" : ""}`} />
+                                                        <RefreshCw className={`h-4 w-4 ${isRefreshing === ticker.ticker ? "animate-spin" : ""}`} />
                                                     </Button>
                                                     <Button
                                                         variant="outline"
@@ -285,13 +311,26 @@ export default function TickersPage() {
                     </div>
 
                     {totalPages > 1 && (
-                        <div className="mt-4 flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
-                            <div className="flex gap-2">
-                                <Button variant="outline" size="sm" onClick={() => setPage(Math.max(1, page - 1))} disabled={page === 1 || loading}>
+                        <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-4 px-2">
+                            <span className="text-sm text-muted-foreground whitespace-nowrap">
+                                Shown {tickers.length} of {totalItems > 0 ? totalItems : "many"}
+                            </span>
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setPage(Math.max(1, page - 1))}
+                                    disabled={page === 1 || loading}
+                                >
                                     Previous
                                 </Button>
-                                <Button variant="outline" size="sm" onClick={() => setPage(Math.min(totalPages, page + 1))} disabled={page === totalPages || loading}>
+                                <span className="text-sm px-2">Page {page} of {totalPages}</span>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setPage(Math.min(totalPages, page + 1))}
+                                    disabled={page === totalPages || loading}
+                                >
                                     Next
                                 </Button>
                             </div>
@@ -339,7 +378,7 @@ export default function TickersPage() {
             <Dialog open={statusDialog.open} onOpenChange={(open) => !open && setStatusDialog(prev => ({ ...prev, open: false }))}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Set Ticker Status: {statusDialog.ticker?.symbol}</DialogTitle>
+                        <DialogTitle>Set Ticker Status: {statusDialog.ticker?.ticker}</DialogTitle>
                         <DialogDescription>
                             Changing the status affects whether this ticker is ingested and processed by pipelines.
                         </DialogDescription>

@@ -675,7 +675,7 @@ export async function refreshGenesisTicker(symbol: string, token: string) {
 
 export async function setGenesisTickerStatus(symbol: string, status: string, token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/tickers/${symbol}/status`, {
-    method: "PUT",
+    method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
