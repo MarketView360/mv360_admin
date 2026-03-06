@@ -56,14 +56,14 @@ import {
 interface Ticker {
     id: number;
     ticker: string;
-    name: string | null;
-    exchange: string;
     code: string;
-    status: string;
+    exchange: string;
+    name: string | null;
     sector: string | null;
     industry: string | null;
+    status: string;
     fundamentals_last_ingested: string | null;
-    eod_history_from: string | null;
+    last_updated: string | null;
 }
 
 export default function TickersPage() {
@@ -174,6 +174,23 @@ export default function TickersPage() {
         }
     };
 
+    // Time formatting helper
+    const formatRelative = (dateStr: string | null) => {
+        if (!dateStr) return "Never";
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMins / 60);
+        const diffDays = Math.floor(diffHours / 24);
+
+        if (diffMins < 1) return "Just now";
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        return date.toLocaleDateString();
+    };
+
     const handleAddSubmit = async () => {
         const token = sessionRef.current?.access_token;
         if (!token || !newTickerForm.symbol) return;
@@ -187,6 +204,8 @@ export default function TickersPage() {
         }
     };
 
+    // Filter displayed tickers locally for secondary search/filter if needed, 
+    // but primary search is server-side now.
     const filteredTickers = tickers.filter(t =>
         t.ticker.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (t.name && t.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -270,22 +289,22 @@ export default function TickersPage() {
                                     <TableHead>Symbol</TableHead>
                                     <TableHead>Name</TableHead>
                                     <TableHead>Exchange</TableHead>
-                                    <TableHead>Type</TableHead>
                                     <TableHead>Status</TableHead>
+                                    <TableHead>Last Ingested</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {loading && tickers.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                                             <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
                                             Loading tickers...
                                         </TableCell>
                                     </TableRow>
                                 ) : filteredTickers.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                                             No tickers found matching your criteria.
                                         </TableCell>
                                     </TableRow>
@@ -295,8 +314,19 @@ export default function TickersPage() {
                                             <TableCell className="font-mono font-medium">{ticker.ticker}</TableCell>
                                             <TableCell className="max-w-[200px] truncate" title={ticker.name || ""}>{ticker.name || "-"}</TableCell>
                                             <TableCell>{ticker.exchange}</TableCell>
-                                            <TableCell>{ticker.sector || "-"}</TableCell>
                                             <TableCell>{getStatusBadge(ticker.status)}</TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-col text-xs gap-1">
+                                                    <div className="flex justify-between gap-4">
+                                                        <span className="text-muted-foreground">Fundamentals:</span>
+                                                        <span className="font-medium">{formatRelative(ticker.fundamentals_last_ingested)}</span>
+                                                    </div>
+                                                    <div className="flex justify-between gap-4">
+                                                        <span className="text-muted-foreground">Metadata:</span>
+                                                        <span className="font-medium">{formatRelative(ticker.last_updated)}</span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
                                             <TableCell className="text-right">
                                                 <div className="flex justify-end gap-2">
                                                     <Button
