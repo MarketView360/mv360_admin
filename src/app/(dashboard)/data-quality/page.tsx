@@ -206,8 +206,8 @@ export default function DataQualityPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <FileSearch className="mr-2 h-4 w-4" />
-            Full Audit
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading && !validating ? "animate-spin" : ""}`} />
+            Refresh
           </Button>
           <Button size="sm" onClick={runValidation} disabled={validating || loading}>
             {validating ? (
@@ -258,7 +258,7 @@ export default function DataQualityPage() {
                 </span>
                 {data.computed_at && (
                   <span className="text-xs text-muted-foreground ml-2">
-                    · computed {timeAgo(data.computed_at)}
+                    · last validated {timeAgo(data.computed_at)}
                   </span>
                 )}
               </div>
