@@ -17,6 +17,7 @@ import {
   DatabaseZap,
   FileText,
   LogOut,
+  Activity,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 const navItems = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
   { href: "/genesis", label: "Genesis Engine", icon: Cpu },
+  { href: "/tickers", label: "Tickers", icon: Activity },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/logging", label: "Logging", icon: ScrollText },
   { href: "/revenue", label: "Revenue", icon: DollarSign },

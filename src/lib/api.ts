@@ -643,6 +643,64 @@ export async function testGenesisAlerts(token: string) {
   return res.json();
 }
 
+export async function fetchGenesisTickers(token: string, page = 1, limit = 100, status = "", sector = "") {
+  const params = new URLSearchParams({
+    page: String(page),
+    limit: String(limit),
+  });
+  if (status) params.append("status", status);
+  if (sector) params.append("sector", sector);
+
+  const res = await fetch(`${GENESIS_URL}/admin/tickers?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
+    },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function refreshGenesisTicker(symbol: string, token: string) {
+  const res = await fetch(`${GENESIS_URL}/admin/tickers/${symbol}/refresh`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
+    },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function setGenesisTickerStatus(symbol: string, status: string, token: string) {
+  const res = await fetch(`${GENESIS_URL}/admin/tickers/${symbol}/status`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function addGenesisTicker(symbol: string, exchange: string, token: string) {
+  const res = await fetch(`${GENESIS_URL}/admin/tickers/add`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ symbol, exchange }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export interface BlogPost {
   id: number;
   created_at: string;
