@@ -71,6 +71,7 @@ export default function TickersPage() {
     const [loading, setLoading] = useState(true);
     const [tickers, setTickers] = useState<Ticker[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
@@ -79,6 +80,18 @@ export default function TickersPage() {
 
     const sessionRef = useRef(session);
     useEffect(() => { sessionRef.current = session; }, [session]);
+
+    // Debounce search query to avoid spamming the backend
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            if (debouncedSearch !== searchQuery) {
+                setDebouncedSearch(searchQuery);
+                setPage(1); // Reset to page 1 on new search
+            }
+        }, 400);
+        return () => clearTimeout(handler);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchQuery]);
 
     // Actions state
     const [isRefreshing, setIsRefreshing] = useState<string | null>(null);
@@ -93,7 +106,7 @@ export default function TickersPage() {
         newStatus: ""
     });
 
-    const loadData = async (currentPage = page) => {
+    const loadData = async (currentPage = page, search = debouncedSearch) => {
         const token = sessionRef.current?.access_token;
         if (!token) return;
         setLoading(true);
@@ -102,7 +115,9 @@ export default function TickersPage() {
                 token,
                 currentPage,
                 100,
-                statusFilter === "all" ? "" : statusFilter
+                statusFilter === "all" ? "" : statusFilter,
+                "", // sector
+                search
             );
 
             console.log("[Tickers] API resp:", resp);
@@ -129,9 +144,9 @@ export default function TickersPage() {
     };
 
     useEffect(() => {
-        loadData(page);
+        loadData(page, debouncedSearch);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [session, page, statusFilter]); // re-run when session becomes available
+    }, [session, page, statusFilter, debouncedSearch]); // re-run when filters or search change
 
     const handleForceRefresh = async (symbol: string) => {
         const token = sessionRef.current?.access_token;

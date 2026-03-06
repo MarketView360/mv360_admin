@@ -643,13 +643,14 @@ export async function testGenesisAlerts(token: string) {
   return res.json();
 }
 
-export async function fetchGenesisTickers(token: string, page = 1, limit = 100, status = "", sector = "") {
+export async function fetchGenesisTickers(token: string, page = 1, limit = 100, status = "", sector = "", search = "") {
   const params = new URLSearchParams({
     page: String(page),
     limit: String(limit),
   });
   if (status) params.append("status", status);
   if (sector) params.append("sector", sector);
+  if (search) params.append("search", search);
 
   const res = await fetch(`${GENESIS_URL}/admin/tickers?${params.toString()}`, {
     headers: {
