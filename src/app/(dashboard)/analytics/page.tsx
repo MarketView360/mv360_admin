@@ -44,14 +44,14 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 const CHART_TOOLTIP_STYLE = {
-  backgroundColor: "hsl(var(--card))",
-  border: "1px solid hsl(var(--border))",
+  backgroundColor: "var(--card)",
+  border: "1px solid var(--border)",
   borderRadius: 8,
   fontSize: 12,
-  color: "hsl(var(--foreground))",
+  color: "var(--foreground)",
 };
 
-const AXIS_TICK = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
+const AXIS_TICK = { fontSize: 11, fill: "var(--muted-foreground)" };
 
 interface AnalyticsState {
   totalUsers: number;
@@ -185,7 +185,7 @@ export default function AnalyticsPage() {
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={credits.history}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="day" tick={AXIS_TICK} tickFormatter={(v) => v.slice(5)} />
                 <YAxis tick={AXIS_TICK} />
                 <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
@@ -292,7 +292,7 @@ export default function AnalyticsPage() {
                       <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.6} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="date" tick={AXIS_TICK} tickFormatter={(v) => v.slice(5)} />
                   <YAxis tick={AXIS_TICK} allowDecimals={false} />
                   <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
@@ -377,7 +377,7 @@ export default function AnalyticsPage() {
                       <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="date" tick={AXIS_TICK} tickFormatter={(v) => v.slice(5)} />
                   <YAxis tick={AXIS_TICK} allowDecimals={false} />
                   <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
@@ -407,7 +407,7 @@ export default function AnalyticsPage() {
                       <stop offset="100%" stopColor="#ef4444" stopOpacity={0.6} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="date" tick={AXIS_TICK} tickFormatter={(v) => v.slice(5)} />
                   <YAxis tick={AXIS_TICK} allowDecimals={false} />
                   <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
