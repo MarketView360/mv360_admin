@@ -20,7 +20,8 @@ import {
   RefreshCw,
   UserPlus,
 } from "lucide-react";
-import { fetchAnalyticsData } from "@/lib/api";
+import { fetchAnalyticsData, fetchCreditAnalytics } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import {
   AreaChart,
   Area,
@@ -80,23 +81,45 @@ interface AnalyticsState {
   };
 }
 
+interface CreditEntry {
+  day: string;
+  daily_ingestion: number;
+  full_ingestion: number;
+  other: number;
+  total: number;
+}
+interface CreditAnalytics {
+  daily_limit: number;
+  monthly_limit: number;
+  history: CreditEntry[];
+}
+
 export default function AnalyticsPage() {
+  const { session } = useAuth();
   const [data, setData] = useState<AnalyticsState | null>(null);
+  const [credits, setCredits] = useState<CreditAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
+    if (!session?.access_token) return;
     setLoading(true);
     try {
-      const result = await fetchAnalyticsData();
+      const [result, creditsResult] = await Promise.all([
+        fetchAnalyticsData(),
+        fetchCreditAnalytics(session.access_token).catch(() => null)
+      ]);
       setData(result);
+      if (creditsResult) setCredits(creditsResult);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (session?.access_token) {
+      loadData();
+    }
+  }, [session?.access_token]);
 
   const cumulativeSignups = useMemo(() => {
     if (!data) return [];
@@ -132,6 +155,48 @@ export default function AnalyticsPage() {
           Refresh
         </Button>
       </div>
+
+      {/* ── API Credits Analytics ──────────────────────────────────────── */}
+      <Card className="mb-6 border-primary/20 bg-primary/5">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-primary flex items-center gap-2">
+                <Database className="h-5 w-5" />
+                EODHD API Credit Consumption
+              </CardTitle>
+              <CardDescription>30-day historical burn rate by job type</CardDescription>
+            </div>
+            {credits && (
+              <div className="text-right">
+                <div className="text-sm text-muted-foreground">Monthly Limits</div>
+                <div className="font-semibold tabular-nums text-primary text-lg">
+                  {credits.history.reduce((sum, d) => sum + d.total, 0).toLocaleString()} / {credits.monthly_limit.toLocaleString()}
+                </div>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Skeleton className="h-[280px] w-full" />
+          ) : !credits || credits.history.length === 0 ? (
+            <p className="py-12 text-center text-sm text-muted-foreground">No credit data available.</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={credits.history}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="day" tick={AXIS_TICK} tickFormatter={(v) => v.slice(5)} />
+                <YAxis tick={AXIS_TICK} />
+                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                <Bar dataKey="daily_ingestion" name="Daily Ingestion" stackId="a" fill="#10b981" radius={[0, 0, 4, 4]} />
+                <Bar dataKey="full_ingestion" name="Full Ingestion" stackId="a" fill="#3b82f6" />
+                <Bar dataKey="other" name="Other Syncs" stackId="a" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ── KPI Cards ────────────────────────────────────────────────── */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

@@ -526,6 +526,17 @@ export async function fetchGenesisDashboard(token: string) {
   return res.json();
 }
 
+export async function fetchCreditAnalytics(token: string) {
+  const res = await fetch(`${GENESIS_URL}/admin/credits`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
+    },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
 export async function fetchGenesisQueueState(token: string) {
   const res = await fetch(`${GENESIS_URL}/admin/queue`, {
     headers: {
