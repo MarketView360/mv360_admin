@@ -602,9 +602,9 @@ export async function fetchRevenueData() {
 // All functions now have graceful error handling for when Genesis is not available.
 
 const GENESIS_URL =
-  process.env.NEXT_PUBLIC_GENESIS_URL ??
+  (process.env.NEXT_PUBLIC_GENESIS_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:4000";
+  "http://localhost:4000").replace(/\/$/, ""); // Remove trailing slash
 
 /**
  * Helper to fetch from Genesis API with graceful error handling
