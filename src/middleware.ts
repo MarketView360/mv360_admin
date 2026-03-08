@@ -123,6 +123,34 @@ function checkIsAdmin(user: { email?: string | null; app_metadata?: Record<strin
 function addSecurityHeaders(response: NextResponse, request: NextRequest): NextResponse {
   const isDev = process.env.NODE_ENV === "development";
 
+  // Get backend URL from env
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+  const genesisUrl = process.env.NEXT_PUBLIC_GENESIS_URL || backendUrl;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+
+  // Extract hostname for CSP
+  const getHostname = (url: string) => {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return null;
+    }
+  };
+
+  const backendHost = getHostname(backendUrl);
+  const genesisHost = getHostname(genesisUrl);
+  const supabaseHost = getHostname(supabaseUrl);
+
+  const connectSources = [
+    "'self'",
+    supabaseHost || "https://*.supabase.co",
+    backendHost || "http://localhost:*",
+  ];
+
+  if (genesisHost && genesisHost !== backendHost) {
+    connectSources.push(genesisHost);
+  }
+
   // Content Security Policy - restrict resource loading
   response.headers.set(
     "Content-Security-Policy",
@@ -132,7 +160,7 @@ function addSecurityHeaders(response: NextResponse, request: NextRequest): NextR
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://pkztpifakjqziabhhrux.supabase.co",
+      `connect-src ${connectSources.join(" ")}`,
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",

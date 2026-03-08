@@ -95,6 +95,7 @@ export default function TickersPage() {
     const [totalPages, setTotalPages] = useState(1);
     const [totalItems, setTotalItems] = useState(0);
     const [error, setError] = useState<string | null>(null);
+    const [genesisUnavailable, setGenesisUnavailable] = useState(false);
 
     const sessionRef = useRef(session);
     useEffect(() => { sessionRef.current = session; }, [session]);
@@ -126,8 +127,15 @@ export default function TickersPage() {
 
     const loadData = async (currentPage = page, search = debouncedSearch) => {
         const token = sessionRef.current?.access_token;
-        if (!token) return;
+        if (!token) {
+            setError("Not authenticated. Please log in.");
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
+        setError(null);
+
         try {
             const resp = await fetchGenesisTickers(
                 token,
@@ -141,23 +149,48 @@ export default function TickersPage() {
 
             console.log("[Tickers] API resp:", resp);
 
+            // Check if Genesis API is unavailable
+            if (resp && (resp as any).genesisUnavailable) {
+                setGenesisUnavailable(true);
+                setTickers([]);
+                setSummary(null);
+                setTotalPages(1);
+                setTotalItems(0);
+                setError(null);
+                setLoading(false);
+                return;
+            }
+
             if (resp && resp.tickers) {
                 setTickers(resp.tickers);
                 if (resp.summary) setSummary(resp.summary);
                 setTotalPages(resp.total_pages || 1);
                 setTotalItems(resp.total || 0);
+                setGenesisUnavailable(false);
                 setError(null);
             } else if (Array.isArray(resp)) {
                 setTickers(resp);
                 setTotalPages(1);
                 setTotalItems(resp.length);
+                setGenesisUnavailable(false);
                 setError(null);
             } else {
-                setError(`Unexpected response format: ${JSON.stringify(resp).slice(0, 200)}`);
+                setGenesisUnavailable(false);
+                setError("No data available. The ticker management service may not be configured.");
             }
         } catch (err: any) {
             console.error("Failed to fetch tickers:", err);
-            setError(err.message || "Failed to fetch tickers");
+
+            // Check for 404 - Genesis API not available
+            if (err.message?.includes("404") || err.message?.includes("not found")) {
+                setGenesisUnavailable(true);
+                setTickers([]);
+                setSummary(null);
+                setError(null);
+            } else {
+                setGenesisUnavailable(false);
+                setError(err.message || "Failed to fetch tickers. Please try again.");
+            }
         } finally {
             setLoading(false);
         }
@@ -173,10 +206,21 @@ export default function TickersPage() {
         if (!token) return;
         setIsRefreshing(symbol);
         try {
-            await refreshGenesisTicker(symbol, token);
-            alert(`Force refresh initiated for ${symbol}`);
+            const result = await refreshGenesisTicker(symbol, token);
+            if (result) {
+                // Success notification - in production use a toast library
+                console.log(`Force refresh initiated for ${symbol}`);
+                // Show inline success message
+                setError(null);
+                setTimeout(() => loadData(), 1000); // Reload after brief delay
+            } else {
+                throw new Error("Service unavailable");
+            }
         } catch (err: any) {
-            alert(`Error: ${err.message}`);
+            const message = err.message || "Failed to refresh ticker";
+            console.error(`Refresh error for ${symbol}:`, message);
+            // Show error in UI
+            setError(`Failed to refresh ${symbol}: ${message}`);
         } finally {
             setIsRefreshing(null);
         }
@@ -186,11 +230,17 @@ export default function TickersPage() {
         const token = sessionRef.current?.access_token;
         if (!token || !statusDialog.ticker) return;
         try {
-            await setGenesisTickerStatus(statusDialog.ticker.ticker, statusDialog.newStatus, token);
-            setStatusDialog({ open: false, ticker: null, newStatus: "" });
-            loadData();
+            const result = await setGenesisTickerStatus(statusDialog.ticker.ticker, statusDialog.newStatus, token);
+            if (result) {
+                setStatusDialog({ open: false, ticker: null, newStatus: "" });
+                loadData();
+            } else {
+                throw new Error("Service unavailable");
+            }
         } catch (err: any) {
-            alert(`Error: ${err.message}`);
+            const message = err.message || "Failed to update status";
+            console.error("Status change error:", message);
+            setError(`Failed to update status: ${message}`);
         }
     };
 
@@ -215,12 +265,18 @@ export default function TickersPage() {
         const token = sessionRef.current?.access_token;
         if (!token || !newTickerForm.symbol) return;
         try {
-            await addGenesisTicker(newTickerForm.symbol.toUpperCase(), newTickerForm.exchange, token);
-            setAddDialog(false);
-            setNewTickerForm({ symbol: "", exchange: "US" });
-            loadData();
+            const result = await addGenesisTicker(newTickerForm.symbol.toUpperCase(), newTickerForm.exchange, token);
+            if (result) {
+                setAddDialog(false);
+                setNewTickerForm({ symbol: "", exchange: "US" });
+                loadData();
+            } else {
+                throw new Error("Service unavailable");
+            }
         } catch (err: any) {
-            alert(`Error: ${err.message}`);
+            const message = err.message || "Failed to add ticker";
+            console.error("Add ticker error:", message);
+            setError(`Failed to add ticker: ${message}`);
         }
     };
 
@@ -274,7 +330,60 @@ export default function TickersPage() {
                 </div>
             </div>
 
-            {summary && (
+            {/* Genesis API Unavailable Banner */}
+            {genesisUnavailable && (
+                <Card className="border-amber-500/50 bg-amber-500/5">
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-amber-500">
+                            <AlertTriangle className="h-5 w-5" />
+                            Ticker Management Service Unavailable
+                        </CardTitle>
+                        <CardDescription className="text-amber-400/80">
+                            The Genesis API service is not deployed or configured. This feature requires the Genesis service to be running.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-sm text-muted-foreground">
+                            <p className="mb-2">To enable ticker management:</p>
+                            <ul className="list-disc list-inside space-y-1 ml-2">
+                                <li>Deploy the Genesis service to your environment</li>
+                                <li>Set the <code className="bg-muted px-1.5 py-0.5 rounded">NEXT_PUBLIC_GENESIS_URL</code> environment variable</li>
+                                <li>Ensure the admin secret is properly configured</li>
+                            </ul>
+                            <p className="mt-4 text-xs">
+                                In the meantime, you can still manage your application through other admin pages like Overview, Users, and Logging.
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Error Banner */}
+            {error && !genesisUnavailable && (
+                <Card className="border-red-500/50 bg-red-500/5">
+                    <CardContent className="py-4">
+                        <div className="flex items-center gap-3 text-red-500">
+                            <XCircle className="h-5 w-5 flex-shrink-0" />
+                            <div>
+                                <p className="font-medium">Error loading tickers</p>
+                                <p className="text-sm text-red-400/80">{error}</p>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="ml-auto"
+                                onClick={() => loadData()}
+                            >
+                                <RefreshCw className="h-4 w-4 mr-1" />
+                                Retry
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Summary Stats - only show when Genesis is available and we have data */}
+            {!genesisUnavailable && summary && (
                 <div className="flex flex-wrap gap-2 mb-2 items-center justify-end">
                     <div className="flex bg-slate-900 text-slate-100 rounded-md shadow px-3 py-1.5 border border-slate-800 text-sm font-medium gap-3">
                         <div className="flex items-center gap-1.5">
@@ -362,17 +471,35 @@ export default function TickersPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {loading && tickers.length === 0 ? (
+                                {genesisUnavailable ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                                            <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
+                                            <p className="text-lg font-medium text-foreground mb-1">Ticker Management Unavailable</p>
+                                            <p className="text-sm">The Genesis API service is not configured. Please check your environment settings.</p>
+                                        </TableCell>
+                                    </TableRow>
+                                ) : loading && tickers.length === 0 ? (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                                             <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
                                             Loading tickers...
                                         </TableCell>
                                     </TableRow>
                                 ) : filteredTickers.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                            No tickers found matching your criteria.
+                                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                                            {error ? (
+                                                <>
+                                                    <p className="mb-2">No data available</p>
+                                                    <p className="text-xs">{error}</p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <p>No tickers found matching your criteria.</p>
+                                                    <p className="text-xs mt-1">Try adjusting your filters or search query.</p>
+                                                </>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ) : (

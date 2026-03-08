@@ -599,17 +599,49 @@ export async function fetchRevenueData() {
 // ─── Genesis API calls ────────────────────────────────────────────────────────
 // Points directly at the Go Genesis service (standalone REST API).
 // Falls back to the NestJS backend URL for backward compatibility.
+// All functions now have graceful error handling for when Genesis is not available.
 
 const GENESIS_URL =
   process.env.NEXT_PUBLIC_GENESIS_URL ??
   process.env.NEXT_PUBLIC_API_URL ??
   "http://localhost:4000";
 
+/**
+ * Helper to fetch from Genesis API with graceful error handling
+ */
+async function fetchGenesis<T>(endpoint: string, options: RequestInit = {}): Promise<T | null> {
+  try {
+    const res = await fetch(`${GENESIS_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        ...options.headers,
+      },
+    });
+
+    // Handle 404 gracefully - Genesis API might not be deployed
+    if (res.status === 404) {
+      console.warn(`Genesis API endpoint ${endpoint} not available (404). This feature requires the Genesis service.`);
+      return null;
+    }
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(errorText || `HTTP ${res.status}`);
+    }
+
+    return res.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(`Genesis API error (${endpoint}):`, message);
+    throw error;
+  }
+}
+
 export async function triggerGenesisPipeline(
   type: "daily" | "weekly" | "full",
   token: string
 ) {
-  const res = await fetch(`${GENESIS_URL}/genesis/${type}`, {
+  return fetchGenesis(`${GENESIS_URL}/genesis/${type}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -617,30 +649,24 @@ export async function triggerGenesisPipeline(
       "Content-Type": "application/json",
     },
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function fetchGenesisStatus(token: string) {
-  const res = await fetch(`${GENESIS_URL}/genesis/status`, {
+  return fetchGenesis(`${GENESIS_URL}/genesis/status`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Pipeline-Secret": process.env.NEXT_PUBLIC_PIPELINE_SECRET || "dev-pipeline-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function fetchGenesisBudget(token: string) {
-  const res = await fetch(`${GENESIS_URL}/genesis/budget`, {
+  return fetchGenesis(`${GENESIS_URL}/genesis/budget`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Pipeline-Secret": process.env.NEXT_PUBLIC_PIPELINE_SECRET || "dev-pipeline-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -648,94 +674,80 @@ export async function fetchGenesisBudget(token: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function fetchGenesisDashboard(token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/dashboard`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/dashboard`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function fetchCreditAnalytics(token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/credits`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/credits`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function fetchGenesisQueueState(token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/queue`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/queue`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function fetchGenesisFailedQueue(token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/queue/failed`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/queue/failed`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function retryGenesisFailedJob(id: number, token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/queue/${id}/retry`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/queue/${id}/retry`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function retryAllGenesisFailedJobs(token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/queue/retry-all-failed`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/queue/retry-all-failed`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function clearGenesisFailedJobs(token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/queue/clear-failed`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/queue/clear-failed`, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function fetchGenesisLogs(token: string, limit = 50) {
-  const res = await fetch(`${GENESIS_URL}/admin/logs?limit=${limit}`, {
+  const result = await fetchGenesis(`${GENESIS_URL}/admin/logs?limit=${limit}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
     },
   });
-  if (!res.ok) throw new Error(await res.text());
-  const json = await res.json();
+  if (!result) return [];
+  const json = result as any;
   return (json.logs ?? []).map((l: any) => ({
     id: String(l.id),
     sync_type: l.sync_type,
@@ -751,18 +763,16 @@ export async function fetchGenesisLogs(token: string, limit = 50) {
 }
 
 export async function fetchGenesisAlertsConfig(token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/alerts/config`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/alerts/config`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function setGenesisAlertsConfig(webhookUrl: string, token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/alerts/config`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/alerts/config`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -771,22 +781,26 @@ export async function setGenesisAlertsConfig(webhookUrl: string, token: string) 
     },
     body: JSON.stringify({ webhook_url: webhookUrl }),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function testGenesisAlerts(token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/alerts/test`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/alerts/test`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
-export async function fetchGenesisTickers(token: string, page = 1, limit = 100, status = "", sector = "", search = "", exchange = "") {
+export async function fetchGenesisTickers(
+  token: string,
+  page = 1,
+  limit = 100,
+  status = "",
+  sector = "",
+  search = "",
+  exchange = ""
+) {
   const params = new URLSearchParams({
     page: String(page),
     limit: String(limit),
@@ -796,30 +810,39 @@ export async function fetchGenesisTickers(token: string, page = 1, limit = 100, 
   if (search) params.append("search", search);
   if (exchange) params.append("exchange", exchange);
 
-  const res = await fetch(`${GENESIS_URL}/admin/tickers?${params.toString()}`, {
+  const result = await fetchGenesis(`${GENESIS_URL}/admin/tickers?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
+
+  // Return empty state if Genesis API is not available
+  if (!result) {
+    return {
+      tickers: [],
+      summary: { total: 0, healthy: 0, stale: 0, errors: 0, review: 0 },
+      total_pages: 1,
+      total: 0,
+      genesisUnavailable: true,
+    };
+  }
+
+  return result;
 }
 
 export async function refreshGenesisTicker(symbol: string, token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/tickers/${symbol}/refresh`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/tickers/${symbol}/refresh`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
-    },
+    }
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function setGenesisTickerStatus(symbol: string, status: string, token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/tickers/${symbol}/status`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/tickers/${symbol}/status`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -828,12 +851,10 @@ export async function setGenesisTickerStatus(symbol: string, status: string, tok
     },
     body: JSON.stringify({ status }),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export async function addGenesisTicker(symbol: string, exchange: string, token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/tickers/add`, {
+  return fetchGenesis(`${GENESIS_URL}/admin/tickers/add`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -842,8 +863,6 @@ export async function addGenesisTicker(symbol: string, exchange: string, token: 
     },
     body: JSON.stringify({ symbol, exchange }),
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
 }
 
 export interface BlogPost {
