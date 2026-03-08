@@ -161,15 +161,17 @@ export default function TickersPage() {
                 return;
             }
 
-            if (resp && resp.tickers) {
-                setTickers(resp.tickers);
-                if (resp.summary) setSummary(resp.summary);
-                setTotalPages(resp.total_pages || 1);
-                setTotalItems(resp.total || 0);
+            // Type guard to ensure resp has the expected structure
+            const respAny = resp as any;
+            if (resp && typeof resp === 'object' && 'tickers' in resp && Array.isArray(respAny.tickers)) {
+                setTickers(respAny.tickers as Ticker[]);
+                if (respAny.summary) setSummary(respAny.summary as DashboardSummary);
+                setTotalPages(respAny.total_pages || 1);
+                setTotalItems(respAny.total || 0);
                 setGenesisUnavailable(false);
                 setError(null);
             } else if (Array.isArray(resp)) {
-                setTickers(resp);
+                setTickers(resp as Ticker[]);
                 setTotalPages(1);
                 setTotalItems(resp.length);
                 setGenesisUnavailable(false);

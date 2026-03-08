@@ -120,8 +120,8 @@ export default function GenesisPage() {
       fetchGenesisFailedQueue(token).catch(() => []),
       fetchGenesisLogs(token, 50).catch(() => null),
     ]);
-    setStatusData(status);
-    setQueueState(queue);
+    setStatusData(status as Record<string, unknown> | null);
+    setQueueState(queue as Array<{ job_type: string; status: string; count: number }> | null);
     setFailedJobs(Array.isArray(failed) ? failed : []);
     if (syncLogs) setLogs(syncLogs);
   };
@@ -139,10 +139,10 @@ export default function GenesisPage() {
         token ? fetchGenesisFailedQueue(token).catch(() => []) : [],
       ]);
       setLogs(syncLogs);
-      setStatusData(status);
-      setBudgetData(budget);
-      setAlertsConfig(alerts);
-      setQueueState(queue);
+      setStatusData(status as Record<string, unknown> | null);
+      setBudgetData(budget as Record<string, unknown> | null);
+      setAlertsConfig(alerts as { webhook_url_set: boolean; webhook_url_prefix: string } | null);
+      setQueueState(queue as Array<{ job_type: string; status: string; count: number }> | null);
       setFailedJobs(Array.isArray(failed) ? failed : []);
     } finally {
       setLoading(false);

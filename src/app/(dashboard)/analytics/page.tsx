@@ -109,7 +109,10 @@ export default function AnalyticsPage() {
         fetchCreditAnalytics(session.access_token).catch(() => null)
       ]);
       setData(result);
-      if (creditsResult) setCredits(creditsResult);
+      // Only set credits if we have a valid CreditAnalytics object with required properties
+      if (creditsResult && typeof creditsResult === 'object' && 'daily_limit' in creditsResult && 'history' in creditsResult) {
+        setCredits(creditsResult as CreditAnalytics);
+      }
     } finally {
       setLoading(false);
     }
