@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useAuth } from "@/lib/auth";
 import { logAuthEvent } from "@/lib/api";
-import { AdminSidebar } from "@/components/admin/sidebar";
+import { AdminSidebar, CollapsibleAdminSidebar } from "@/components/admin/sidebar";
 import { StatusBar } from "@/components/dashboard/StatusBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -201,12 +201,19 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <AdminSidebar />
+      <CollapsibleAdminSidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         <StatusBar />
         <main className="flex-1 overflow-y-auto bg-background p-6">
           {children}
         </main>
+        {/* Footer */}
+        <footer className="border-t border-border bg-card px-6 py-3">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <p>&copy; 2026 Upcheck Technologies Private Limited. All rights reserved.</p>
+            <p className="hidden sm:block">Built by Upcheck Technologies Private Limited</p>
+          </div>
+        </footer>
       </div>
     </div>
   );

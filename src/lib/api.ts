@@ -641,7 +641,7 @@ export async function triggerGenesisPipeline(
   type: "daily" | "weekly" | "full",
   token: string
 ) {
-  return fetchGenesis(`${GENESIS_URL}/genesis/${type}`, {
+  return fetchGenesis(`/genesis/${type}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -652,7 +652,7 @@ export async function triggerGenesisPipeline(
 }
 
 export async function fetchGenesisStatus(token: string) {
-  return fetchGenesis(`${GENESIS_URL}/genesis/status`, {
+  return fetchGenesis(`/genesis/status`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Pipeline-Secret": process.env.NEXT_PUBLIC_PIPELINE_SECRET || "dev-pipeline-secret"
@@ -661,7 +661,7 @@ export async function fetchGenesisStatus(token: string) {
 }
 
 export async function fetchGenesisBudget(token: string) {
-  return fetchGenesis(`${GENESIS_URL}/genesis/budget`, {
+  return fetchGenesis(`/genesis/budget`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Pipeline-Secret": process.env.NEXT_PUBLIC_PIPELINE_SECRET || "dev-pipeline-secret"
@@ -674,7 +674,7 @@ export async function fetchGenesisBudget(token: string) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function fetchGenesisDashboard(token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/dashboard`, {
+  return fetchGenesis(`/admin/dashboard`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
@@ -683,7 +683,7 @@ export async function fetchGenesisDashboard(token: string) {
 }
 
 export async function fetchCreditAnalytics(token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/credits`, {
+  return fetchGenesis(`/admin/credits`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
@@ -692,7 +692,7 @@ export async function fetchCreditAnalytics(token: string) {
 }
 
 export async function fetchGenesisQueueState(token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/queue`, {
+  return fetchGenesis(`/admin/queue`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
@@ -701,7 +701,7 @@ export async function fetchGenesisQueueState(token: string) {
 }
 
 export async function fetchGenesisFailedQueue(token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/queue/failed`, {
+  return fetchGenesis(`/admin/queue/failed`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
@@ -710,7 +710,7 @@ export async function fetchGenesisFailedQueue(token: string) {
 }
 
 export async function retryGenesisFailedJob(id: number, token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/queue/${id}/retry`, {
+  return fetchGenesis(`/admin/queue/${id}/retry`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -720,7 +720,7 @@ export async function retryGenesisFailedJob(id: number, token: string) {
 }
 
 export async function retryAllGenesisFailedJobs(token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/queue/retry-all-failed`, {
+  return fetchGenesis(`/admin/queue/retry-all-failed`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -730,7 +730,7 @@ export async function retryAllGenesisFailedJobs(token: string) {
 }
 
 export async function clearGenesisFailedJobs(token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/queue/clear-failed`, {
+  return fetchGenesis(`/admin/queue/clear-failed`, {
     method: "DELETE",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -740,7 +740,7 @@ export async function clearGenesisFailedJobs(token: string) {
 }
 
 export async function fetchGenesisLogs(token: string, limit = 50) {
-  const result = await fetchGenesis(`${GENESIS_URL}/admin/logs?limit=${limit}`, {
+  const result = await fetchGenesis(`/admin/logs?limit=${limit}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
@@ -763,7 +763,7 @@ export async function fetchGenesisLogs(token: string, limit = 50) {
 }
 
 export async function fetchGenesisAlertsConfig(token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/alerts/config`, {
+  return fetchGenesis(`/admin/alerts/config`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
@@ -772,7 +772,7 @@ export async function fetchGenesisAlertsConfig(token: string) {
 }
 
 export async function setGenesisAlertsConfig(webhookUrl: string, token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/alerts/config`, {
+  return fetchGenesis(`/admin/alerts/config`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -784,7 +784,7 @@ export async function setGenesisAlertsConfig(webhookUrl: string, token: string) 
 }
 
 export async function testGenesisAlerts(token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/alerts/test`, {
+  return fetchGenesis(`/admin/alerts/test`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
@@ -810,7 +810,7 @@ export async function fetchGenesisTickers(
   if (search) params.append("search", search);
   if (exchange) params.append("exchange", exchange);
 
-  const result = await fetchGenesis(`${GENESIS_URL}/admin/tickers?${params.toString()}`, {
+  const result = await fetchGenesis(`/admin/tickers?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
@@ -832,7 +832,7 @@ export async function fetchGenesisTickers(
 }
 
 export async function refreshGenesisTicker(symbol: string, token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/tickers/${symbol}/refresh`, {
+  return fetchGenesis(`/admin/tickers/${symbol}/refresh`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -842,7 +842,7 @@ export async function refreshGenesisTicker(symbol: string, token: string) {
 }
 
 export async function setGenesisTickerStatus(symbol: string, status: string, token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/tickers/${symbol}/status`, {
+  return fetchGenesis(`/admin/tickers/${symbol}/status`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -854,7 +854,7 @@ export async function setGenesisTickerStatus(symbol: string, status: string, tok
 }
 
 export async function addGenesisTicker(symbol: string, exchange: string, token: string) {
-  return fetchGenesis(`${GENESIS_URL}/admin/tickers/add`, {
+  return fetchGenesis(`/admin/tickers/add`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -1142,25 +1142,21 @@ export async function fetchDashboardTickerStats(): Promise<DashboardTickerStats>
 // ─── Data Quality (Genesis-backed) ────────────────────────────────────────────
 
 export async function fetchDataQuality(token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/data-quality`, {
+  return fetchGenesis(`/admin/data-quality`, {
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
     },
   });
-  if (!res.ok) throw new Error(`data-quality fetch failed: ${res.status}`);
-  return res.json();
 }
 
 export async function runDataQualityValidation(token: string) {
-  const res = await fetch(`${GENESIS_URL}/admin/data-quality/validate`, {
+  return fetchGenesis(`/admin/data-quality/validate`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
     },
   });
-  if (!res.ok) throw new Error(`validate failed: ${res.status}`);
-  return res.json();
 }
 

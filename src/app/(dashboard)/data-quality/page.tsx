@@ -165,7 +165,7 @@ export default function DataQualityPage() {
     setLoading(true);
     setError(null);
     try {
-      const result = await fetchDataQuality(token);
+      const result = await fetchDataQuality(token) as DataQualityData | null;
       setData(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load data quality");
@@ -178,7 +178,7 @@ export default function DataQualityPage() {
     if (!token || validating) return;
     setValidating(true);
     try {
-      const result = await runDataQualityValidation(token);
+      const result = await runDataQualityValidation(token) as DataQualityData | null;
       setData(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Validation failed");
