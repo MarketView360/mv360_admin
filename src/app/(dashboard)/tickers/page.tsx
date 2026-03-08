@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import {
     fetchGenesisTickers,
@@ -34,6 +34,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
 import {
     Select,
     SelectContent,
@@ -53,7 +54,10 @@ import {
     Ban,
     Clock,
     TrendingUp,
-    TrendingDown
+    TrendingDown,
+    Loader2,
+    ChevronDown,
+    ChevronUp
 } from "lucide-react";
 
 interface DashboardSummary {
@@ -80,11 +84,30 @@ interface Ticker {
     last_price_date: string | null;
     total_data_points: number;
     indicator_count: number;
+    // Extended metrics
+    market_cap: number | null;
+    pe_ratio: number | null;
+    pb_ratio: number | null;
+    dividend_yield: number | null;
+    roe: number | null;
+    debt_to_equity: number | null;
+    current_ratio: number | null;
+    operating_cf: number | null;
+    free_cf: number | null;
+    beta: number | null;
+    rsi: number | null;
+    eps_ttm: number | null;
+    revenue_ttm: number | null;
+    net_margin: number | null;
+    price_change_1y: number | null;
 }
 
 export default function TickersPage() {
     const { session } = useAuth();
     const [loading, setLoading] = useState(true);
+    const [batchLoading, setBatchLoading] = useState(false);
+    const [batchProgress, setBatchProgress] = useState(0);
+    const [batchSize, setBatchSize] = useState(20); // Load 20 tickers at a time
     const [tickers, setTickers] = useState<Ticker[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -96,20 +119,37 @@ export default function TickersPage() {
     const [totalItems, setTotalItems] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [genesisUnavailable, setGenesisUnavailable] = useState(false);
+    const [searching, setSearching] = useState(false);
+    const [expandedTickerId, setExpandedTickerId] = useState<number | null>(null);
 
     const sessionRef = useRef(session);
     useEffect(() => { sessionRef.current = session; }, [session]);
 
-    // Debounce search query to avoid spamming the backend
+    // Abort controller for search cancellation
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Immediate search - pause batch loading when user types
     useEffect(() => {
-        const handler = setTimeout(() => {
+        if (searchQuery.trim()) {
+            setSearching(true);
+            // Cancel any pending batch load
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+            // Debounce slightly for immediate search
+            const handler = setTimeout(() => {
+                setDebouncedSearch(searchQuery);
+                setPage(1);
+                setBatchLoading(false);
+                setSearching(false);
+            }, 300);
+            return () => clearTimeout(handler);
+        } else {
+            setSearching(false);
             if (debouncedSearch !== searchQuery) {
                 setDebouncedSearch(searchQuery);
-                setPage(1); // Reset to page 1 on new search
             }
-        }, 400);
-        return () => clearTimeout(handler);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        }
     }, [searchQuery]);
 
     // Actions state
@@ -125,6 +165,77 @@ export default function TickersPage() {
         newStatus: ""
     });
 
+    const loadAllTickersInBatches = async (token: string) => {
+        setBatchLoading(true);
+        setBatchProgress(0);
+        setTickers([]);
+
+        try {
+            // First, get total count
+            const initialResp = await fetchGenesisTickers(
+                token,
+                1,
+                1, // Just get 1 to check total
+                statusFilter === "all" ? "" : statusFilter,
+                "",
+                debouncedSearch,
+                exchangeFilter === "all" ? "" : exchangeFilter
+            );
+
+            const totalItems = (initialResp as any)?.total || 0;
+            const totalPages = Math.ceil(totalItems / batchSize);
+            setTotalPages(totalPages);
+            setTotalItems(totalItems);
+
+            // Now load in batches
+            const allTickers: Ticker[] = [];
+            let lastResp: any = null;
+            for (let p = 1; p <= totalPages; p++) {
+                // Check if search changed during batch load
+                if (searchQuery !== debouncedSearch) {
+                    break; // Stop batch loading if search changed
+                }
+
+                abortControllerRef.current = new AbortController();
+
+                const resp = await fetchGenesisTickers(
+                    token,
+                    p,
+                    batchSize,
+                    statusFilter === "all" ? "" : statusFilter,
+                    "",
+                    debouncedSearch,
+                    exchangeFilter === "all" ? "" : exchangeFilter
+                );
+
+                lastResp = resp;
+                const tickersInBatch = (resp as any)?.tickers || [];
+                allTickers.push(...tickersInBatch);
+                setTickers([...allTickers]);
+
+                const progress = Math.round((p / totalPages) * 100);
+                setBatchProgress(progress);
+
+                // Small delay between batches
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            // Update summary from final batch
+            if (lastResp?.summary) {
+                setSummary(lastResp.summary as DashboardSummary);
+            }
+        } catch (err: any) {
+            if (err.name !== 'AbortError') {
+                console.error("Batch load error:", err);
+            }
+        } finally {
+            setBatchLoading(false);
+            setBatchProgress(0);
+            setLoading(false);
+            abortControllerRef.current = null;
+        }
+    };
+
     const loadData = async (currentPage = page, search = debouncedSearch) => {
         const token = sessionRef.current?.access_token;
         if (!token) {
@@ -135,12 +246,13 @@ export default function TickersPage() {
 
         setLoading(true);
         setError(null);
+        abortControllerRef.current = new AbortController();
 
         try {
             const resp = await fetchGenesisTickers(
                 token,
                 currentPage,
-                100,
+                batchSize, // Load smaller batches
                 statusFilter === "all" ? "" : statusFilter,
                 "", // sector
                 search,
@@ -181,27 +293,66 @@ export default function TickersPage() {
                 setError("No data available. The ticker management service may not be configured.");
             }
         } catch (err: any) {
-            console.error("Failed to fetch tickers:", err);
+            if (err.name !== 'AbortError') {
+                console.error("Failed to fetch tickers:", err);
 
-            // Check for 404 - Genesis API not available
-            if (err.message?.includes("404") || err.message?.includes("not found")) {
-                setGenesisUnavailable(true);
-                setTickers([]);
-                setSummary(null);
-                setError(null);
-            } else {
-                setGenesisUnavailable(false);
-                setError(err.message || "Failed to fetch tickers. Please try again.");
+                // Check for 404 - Genesis API not available
+                if (err.message?.includes("404") || err.message?.includes("not found")) {
+                    setGenesisUnavailable(true);
+                    setTickers([]);
+                    setSummary(null);
+                    setError(null);
+                } else {
+                    setGenesisUnavailable(false);
+                    setError(err.message || "Failed to fetch tickers. Please try again.");
+                }
             }
         } finally {
             setLoading(false);
+            abortControllerRef.current = null;
+        }
+    };
+
+    // Load more tickers for batch loading
+    const loadMoreBatch = async () => {
+        if (batchLoading || page >= totalPages || searching) return;
+
+        const token = sessionRef.current?.access_token;
+        if (!token) return;
+
+        const nextPage = page + 1;
+        setPage(nextPage);
+
+        try {
+            const resp = await fetchGenesisTickers(
+                token,
+                nextPage,
+                batchSize,
+                statusFilter === "all" ? "" : statusFilter,
+                "",
+                debouncedSearch,
+                exchangeFilter === "all" ? "" : exchangeFilter
+            );
+
+            const respAny = resp as any;
+            if (resp && typeof resp === 'object' && 'tickers' in resp && Array.isArray(respAny.tickers)) {
+                setTickers(prev => [...prev, ...(respAny.tickers as Ticker[])]);
+            }
+        } catch (err: any) {
+            if (err.name !== 'AbortError') {
+                console.error("Failed to load more tickers:", err);
+            }
         }
     };
 
     useEffect(() => {
+        // Reset tickers when filters change (but not when loading more)
+        if (statusFilter !== 'all' || exchangeFilter !== 'all' || debouncedSearch) {
+            setTickers([]);
+        }
         loadData(page, debouncedSearch);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [session, page, statusFilter, exchangeFilter, debouncedSearch]); // re-run when filters or search change
+    }, [session, statusFilter, exchangeFilter, debouncedSearch]); // Removed page from deps to avoid re-fetching on batch load
 
     const handleForceRefresh = async (symbol: string) => {
         const token = sessionRef.current?.access_token;
@@ -411,6 +562,32 @@ export default function TickersPage() {
                 </div>
             )}
 
+            {/* Batch Loading Progress */}
+            {batchLoading && (
+                <Card className="border-blue-500/50 bg-blue-500/5">
+                    <CardContent className="py-4">
+                        <div className="flex items-center gap-4">
+                            <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+                            <div className="flex-1 space-y-2">
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-blue-500 font-medium">Loading tickers in batches...</span>
+                                    <span className="text-blue-400">{batchProgress}%</span>
+                                </div>
+                                <Progress value={batchProgress} className="h-2" />
+                                <p className="text-xs text-muted-foreground">
+                                    Loaded {tickers.length} of {totalItems} tickers
+                                </p>
+                            </div>
+                            {searching && (
+                                <Button variant="outline" size="sm" onClick={() => setSearching(false)}>
+                                    Cancel Search
+                                </Button>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
             <Card>
                 <CardHeader>
                     <div className="flex flex-col md:flex-row gap-4 md:items-center justify-between">
@@ -420,29 +597,28 @@ export default function TickersPage() {
                                 placeholder="Search symbol or name..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
+                                disabled={batchLoading}
                                 className="pl-9"
                             />
                         </div>
                         <div className="flex items-center gap-4">
                             <div className="flex items-center gap-2">
                                 <span className="text-sm text-muted-foreground">Status:</span>
-                                <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); setPage(1); }}>
+                                <Select value={statusFilter} onValueChange={(val) => { setStatusFilter(val); }} disabled={batchLoading}>
                                     <SelectTrigger className="w-[140px]">
                                         <SelectValue placeholder="All Status" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="all">All Status</SelectItem>
                                         <SelectItem value="active">Active</SelectItem>
-                                        <SelectItem value="needs_review">Needs Review</SelectItem>
-                                        <SelectItem value="error">Error</SelectItem>
-                                        <SelectItem value="delisted">Delisted</SelectItem>
-                                        <SelectItem value="ignored">Ignored</SelectItem>
+                                        <SelectItem value="stale">Stale</SelectItem>
+                                        <SelectItem value="inactive">Inactive</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                             <div className="flex items-center gap-2">
                                 <span className="text-sm text-muted-foreground">Exchange:</span>
-                                <Select value={exchangeFilter} onValueChange={(val) => { setExchangeFilter(val); setPage(1); }}>
+                                <Select value={exchangeFilter} onValueChange={(val) => { setExchangeFilter(val); }} disabled={batchLoading}>
                                     <SelectTrigger className="w-[140px]">
                                         <SelectValue placeholder="All Exchanges" />
                                     </SelectTrigger>
@@ -462,20 +638,21 @@ export default function TickersPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead className="w-[50px]"></TableHead>
                                     <TableHead>Symbol</TableHead>
                                     <TableHead>Name</TableHead>
                                     <TableHead>Exchange</TableHead>
                                     <TableHead>Status</TableHead>
-                                    <TableHead>Last Ingested</TableHead>
+                                    <TableHead>Last Updated</TableHead>
                                     <TableHead>Last Price</TableHead>
-                                    <TableHead>Data Points</TableHead>
+                                    <TableHead>Metrics</TableHead>
                                     <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {genesisUnavailable ? (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                                        <TableCell colSpan={9} className="text-center py-12 text-muted-foreground">
                                             <AlertTriangle className="h-12 w-12 text-amber-500 mx-auto mb-4" />
                                             <p className="text-lg font-medium text-foreground mb-1">Ticker Management Unavailable</p>
                                             <p className="text-sm">The Genesis API service is not configured. Please check your environment settings.</p>
@@ -483,7 +660,7 @@ export default function TickersPage() {
                                     </TableRow>
                                 ) : loading && tickers.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                                        <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                                             <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2" />
                                             Loading tickers...
                                         </TableCell>
@@ -506,111 +683,191 @@ export default function TickersPage() {
                                     </TableRow>
                                 ) : (
                                     filteredTickers.map((ticker) => (
-                                        <TableRow key={ticker.id}>
-                                            <TableCell className="font-mono font-medium">
-                                                <div className="flex items-center gap-1.5">
-                                                    {ticker.ticker}
-                                                    {(ticker.status === 'error' || ticker.status === 'needs_review' || (ticker.status === 'active' && ticker.indicator_count < 10) || ticker.status === 'stale') && (
-                                                        <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+                                        <React.Fragment key={ticker.id}>
+                                            <TableRow>
+                                                <TableCell>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-8 w-8 p-0"
+                                                        onClick={() => setExpandedTickerId(expandedTickerId === ticker.id ? null : ticker.id)}
+                                                    >
+                                                        {expandedTickerId === ticker.id ? (
+                                                            <ChevronUp className="h-4 w-4" />
+                                                        ) : (
+                                                            <ChevronDown className="h-4 w-4" />
+                                                        )}
+                                                    </Button>
+                                                </TableCell>
+                                                <TableCell className="font-mono font-medium">
+                                                    <div className="flex items-center gap-1.5">
+                                                        {ticker.ticker}
+                                                        {(ticker.status === 'error' || ticker.status === 'stale' || (ticker.status === 'active' && ticker.indicator_count < 10)) && (
+                                                            <AlertTriangle className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+                                                        )}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="max-w-[200px] truncate" title={ticker.name || ""}>{ticker.name || "-"}</TableCell>
+                                                <TableCell>{ticker.exchange}</TableCell>
+                                                <TableCell>{getStatusBadge(ticker)}</TableCell>
+                                                <TableCell className="w-[120px]">
+                                                    <div className="text-sm text-muted-foreground">
+                                                        {formatRelative(ticker.last_updated)}
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="w-[120px]">
+                                                    {ticker.last_price !== null ? (
+                                                        <div className="flex flex-col gap-1 items-start">
+                                                            <span className="font-bold text-[15px] text-slate-100">${ticker.last_price.toFixed(2)}</span>
+                                                            <span className={`text-[13px] flex items-center gap-1 font-medium ${ticker.change_percent && ticker.change_percent > 0 ? 'text-emerald-500' : (ticker.change_percent && ticker.change_percent < 0 ? 'text-red-500' : 'text-slate-400')}`}>
+                                                                {ticker.change_percent && ticker.change_percent > 0 ? (
+                                                                    <TrendingUp className="w-3.5 h-3.5" />
+                                                                ) : ticker.change_percent && ticker.change_percent < 0 ? (
+                                                                    <TrendingDown className="w-3.5 h-3.5" />
+                                                                ) : (
+                                                                    <span className="w-3.5 h-[2px] bg-slate-400 rounded-full" />
+                                                                )}
+                                                                {ticker.change_percent ? (ticker.change_percent > 0 ? `+${ticker.change_percent.toFixed(2)}` : ticker.change_percent.toFixed(2)) : '0.00'}%
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-muted-foreground block">-</span>
                                                     )}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="max-w-[200px] truncate" title={ticker.name || ""}>{ticker.name || "-"}</TableCell>
-                                            <TableCell>{ticker.exchange}</TableCell>
-                                            <TableCell>{getStatusBadge(ticker)}</TableCell>
-                                            <TableCell className="w-[180px]">
-                                                <div className="flex flex-col gap-1.5">
-                                                    <div className="grid grid-cols-[40px_1fr] items-center gap-2">
-                                                        <span className="text-muted-foreground text-[12px]">Daily:</span>
-                                                        <span className="font-medium text-slate-100 bg-slate-800/80 border border-slate-700/60 rounded px-2 py-[1px] truncate text-center text-[12px]">{formatRelative(ticker.last_price_date)}</span>
+                                                </TableCell>
+                                                <TableCell className="w-[150px]">
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {ticker.pe_ratio && (
+                                                            <span className="text-xs bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded" title="P/E Ratio">P/E: {ticker.pe_ratio.toFixed(1)}</span>
+                                                        )}
+                                                        {ticker.market_cap && (
+                                                            <span className="text-xs bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded" title="Market Cap">MC: {(ticker.market_cap / 1e9).toFixed(1)}B</span>
+                                                        )}
+                                                        {ticker.dividend_yield && (
+                                                            <span className="text-xs bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded" title="Dividend Yield">Div: {ticker.dividend_yield.toFixed(2)}%</span>
+                                                        )}
+                                                        {ticker.roe && (
+                                                            <span className="text-xs bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded" title="ROE">ROE: {ticker.roe.toFixed(1)}%</span>
+                                                        )}
                                                     </div>
-                                                    <div className="grid grid-cols-[40px_1fr] items-center gap-2">
-                                                        <span className="text-muted-foreground text-[12px]">Fund:</span>
-                                                        <span className="font-medium text-slate-100 bg-slate-800/80 border border-slate-700/60 rounded px-2 py-[1px] truncate text-center text-[12px]">{formatRelative(ticker.fundamentals_last_ingested)}</span>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            disabled={isRefreshing === ticker.ticker}
+                                                            onClick={() => handleForceRefresh(ticker.ticker)}
+                                                            title="Force Refresh Data"
+                                                        >
+                                                            <RefreshCw className={`h-4 w-4 ${isRefreshing === ticker.ticker ? "animate-spin" : ""}`} />
+                                                        </Button>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => setStatusDialog({ open: true, ticker, newStatus: ticker.status })}
+                                                            title="Change Status"
+                                                        >
+                                                            <Settings2 className="h-4 w-4" />
+                                                        </Button>
                                                     </div>
-                                                    <div className="grid grid-cols-[40px_1fr] items-center gap-2">
-                                                        <span className="text-muted-foreground text-[12px]">Meta:</span>
-                                                        <span className="font-medium text-slate-100 bg-slate-800/80 border border-slate-700/60 rounded px-2 py-[1px] truncate text-center text-[12px]">{formatRelative(ticker.last_updated)}</span>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="w-[120px]">
-                                                {ticker.last_price !== null ? (
-                                                    <div className="flex flex-col gap-1 items-start">
-                                                        <span className="font-bold text-[15px] text-slate-100">${ticker.last_price.toFixed(2)}</span>
-                                                        <span className={`text-[13px] flex items-center gap-1 font-medium ${ticker.change_percent && ticker.change_percent > 0 ? 'text-emerald-500' : (ticker.change_percent && ticker.change_percent < 0 ? 'text-red-500' : 'text-slate-400')}`}>
-                                                            {ticker.change_percent && ticker.change_percent > 0 ? (
-                                                                <TrendingUp className="w-3.5 h-3.5" />
-                                                            ) : ticker.change_percent && ticker.change_percent < 0 ? (
-                                                                <TrendingDown className="w-3.5 h-3.5" />
-                                                            ) : (
-                                                                <span className="w-3.5 h-[2px] bg-slate-400 rounded-full" />
-                                                            )}
-                                                            {ticker.change_percent ? (ticker.change_percent > 0 ? `+${ticker.change_percent.toFixed(2)}` : ticker.change_percent.toFixed(2)) : '0.00'}%
-                                                        </span>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-muted-foreground block">-</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-col gap-0.5 items-start text-xs text-muted-foreground">
-                                                    <span>{ticker.total_data_points ? ticker.total_data_points.toLocaleString() : "0"}</span>
-                                                    <span>{ticker.indicator_count} indicators</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-right">
-                                                <div className="flex justify-end gap-2">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        disabled={isRefreshing === ticker.ticker}
-                                                        onClick={() => handleForceRefresh(ticker.ticker)}
-                                                        title="Force Refresh Data"
-                                                    >
-                                                        <RefreshCw className={`h-4 w-4 ${isRefreshing === ticker.ticker ? "animate-spin" : ""}`} />
-                                                    </Button>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => setStatusDialog({ open: true, ticker, newStatus: ticker.status })}
-                                                        title="Change Status"
-                                                    >
-                                                        <Settings2 className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
+                                                </TableCell>
+                                            </TableRow>
+                                            {expandedTickerId === ticker.id && (
+                                                <TableRow>
+                                                    <TableCell colSpan={9} className="p-4">
+                                                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 p-4 bg-muted/50 rounded-lg">
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">Market Cap</p>
+                                                                <p className="text-sm font-semibold">{ticker.market_cap ? `$${(ticker.market_cap / 1e9).toFixed(2)}B` : 'N/A'}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">P/E Ratio</p>
+                                                                <p className="text-sm font-semibold">{ticker.pe_ratio?.toFixed(2) ?? 'N/A'}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">P/B Ratio</p>
+                                                                <p className="text-sm font-semibold">{ticker.pb_ratio?.toFixed(2) ?? 'N/A'}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">Dividend Yield</p>
+                                                                <p className="text-sm font-semibold">{ticker.dividend_yield?.toFixed(2) ?? 'N/A'}%</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">ROE</p>
+                                                                <p className="text-sm font-semibold">{ticker.roe?.toFixed(2) ?? 'N/A'}%</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">Debt/Equity</p>
+                                                                <p className="text-sm font-semibold">{ticker.debt_to_equity?.toFixed(2) ?? 'N/A'}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">Current Ratio</p>
+                                                                <p className="text-sm font-semibold">{ticker.current_ratio?.toFixed(2) ?? 'N/A'}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">Operating CF</p>
+                                                                <p className="text-sm font-semibold">{ticker.operating_cf ? `$${(ticker.operating_cf / 1e6).toFixed(1)}M` : 'N/A'}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">Free CF</p>
+                                                                <p className="text-sm font-semibold">{ticker.free_cf ? `$${(ticker.free_cf / 1e6).toFixed(1)}M` : 'N/A'}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">Beta</p>
+                                                                <p className="text-sm font-semibold">{ticker.beta?.toFixed(2) ?? 'N/A'}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">RSI</p>
+                                                                <p className="text-sm font-semibold">{ticker.rsi?.toFixed(1) ?? 'N/A'}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">EPS (TTM)</p>
+                                                                <p className="text-sm font-semibold">{ticker.eps_ttm ? `$${ticker.eps_ttm.toFixed(2)}` : 'N/A'}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">Revenue (TTM)</p>
+                                                                <p className="text-sm font-semibold">{ticker.revenue_ttm ? `$${(ticker.revenue_ttm / 1e9).toFixed(2)}B` : 'N/A'}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">Net Margin</p>
+                                                                <p className="text-sm font-semibold">{ticker.net_margin?.toFixed(2) ?? 'N/A'}%</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">1Y Change</p>
+                                                                <p className={`text-sm font-semibold ${ticker.price_change_1y && ticker.price_change_1y > 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                                    {ticker.price_change_1y ? `${ticker.price_change_1y > 0 ? '+' : ''}${ticker.price_change_1y.toFixed(2)}%` : 'N/A'}
+                                                                </p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">Data Points</p>
+                                                                <p className="text-sm font-semibold">{ticker.total_data_points.toLocaleString()}</p>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <p className="text-xs text-muted-foreground">Last Price Date</p>
+                                                                <p className="text-sm font-semibold">{ticker.last_price_date || 'N/A'}</p>
+                                                            </div>
+                                                        </div>
+                                                    </TableCell>
+                                                </TableRow>
+                                            )}
+                                        </React.Fragment>
                                     ))
                                 )}
                             </TableBody>
                         </Table>
                     </div>
 
-                    {totalPages > 1 && (
-                        <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 border-t pt-4 px-2">
-                            <span className="text-sm text-muted-foreground whitespace-nowrap">
-                                Shown {tickers.length} of {totalItems > 0 ? totalItems : "many"}
-                            </span>
-                            <div className="flex items-center gap-2">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setPage(Math.max(1, page - 1))}
-                                    disabled={page === 1 || loading}
-                                >
-                                    Previous
-                                </Button>
-                                <span className="text-sm px-2">Page {page} of {totalPages}</span>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => setPage(Math.min(totalPages, page + 1))}
-                                    disabled={page === totalPages || loading}
-                                >
-                                    Next
-                                </Button>
-                            </div>
+                    {/* Load More Button */}
+                    {!batchLoading && tickers.length < totalItems && (
+                        <div className="mt-4 flex justify-center">
+                            <Button
+                                variant="outline"
+                                onClick={loadMoreBatch}
+                                disabled={loading}
+                            >
+                                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                                Load More ({tickers.length} / {totalItems})
+                            </Button>
                         </div>
                     )}
                 </CardContent>
