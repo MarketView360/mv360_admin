@@ -203,7 +203,7 @@ export function CollapsibleAdminSidebar() {
   const [isHovering, setIsHovering] = useState(false);
 
   // Toggle collapse on button click
-  const handleToggle = () => setIsCollapsed(!isCollapsed);
+  const handleToggle = () => setIsCollapsed(prev => !prev);
 
   // Temporarily expand on hover when collapsed
   const handleMouseEnter = () => setIsHovering(true);
@@ -214,20 +214,21 @@ export function CollapsibleAdminSidebar() {
 
   return (
     <div
-      className="relative"
+      className="relative flex"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
       <AdminSidebar collapsed={effectiveCollapsed} onToggle={handleToggle} />
 
-      {/* Collapse toggle button - always visible */}
+      {/* Collapse toggle button - always visible when not hovering on collapsed sidebar */}
       <button
-        onClick={handleToggle}
+        onClick={(e) => { e.stopPropagation(); handleToggle(); }}
         className={cn(
           "absolute -right-3 top-8 z-50 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background shadow-md transition-all hover:bg-accent",
-          effectiveCollapsed ? "right-2" : ""
+          isCollapsed ? "" : ""
         )}
         aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        onMouseEnter={(e) => e.stopPropagation()}
       >
         {isCollapsed ? (
           <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
