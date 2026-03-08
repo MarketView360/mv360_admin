@@ -1,8 +1,45 @@
 import { supabase } from "@/lib/supabase";
 
 // ─── Overview Stats ───────────────────────────────────────────────────────────
-
+/**
+ * Fetch overview stats using optimized RPC function
+ * Falls back to individual queries if RPC is not available
+ */
 export async function fetchOverviewStats() {
+  // Try RPC first (much faster - single query)
+  const { data: rpcData, error: rpcError } = await supabase.rpc('admin_get_overview_stats');
+
+  if (!rpcError && rpcData && rpcData.length > 0) {
+    const stats = rpcData[0];
+    // Fetch recent syncs separately for display
+    const { data: recentSyncs } = await supabase
+      .from("sync_logs")
+      .select("id, sync_type, status, started_at, completed_at, duration_ms, records_processed, records_failed, error_message")
+      .order("started_at", { ascending: false })
+      .limit(10);
+
+    return {
+      totalCompanies: Number(stats.total_companies) ?? 0,
+      totalPriceRows: Number(stats.total_price_rows) ?? 0,
+      totalUsers: Number(stats.total_users) ?? 0,
+      totalWatchlists: Number(stats.total_watchlists) ?? 0,
+      totalScreenerData: Number(stats.total_screener_data) ?? 0,
+      totalSecurityEvents: Number(stats.total_security_events) ?? 0,
+      totalTechnicals: Number(stats.total_technicals) ?? 0,
+      totalNews: Number(stats.total_news) ?? 0,
+      adminCount: Number(stats.admin_count) ?? 0,
+      premiumCount: Number(stats.premium_count) ?? 0,
+      maxCount: Number(stats.max_count) ?? 0,
+      freeCount: Number(stats.free_count) ?? 0,
+      newUsersThisWeek: Number(stats.new_users_this_week) ?? 0,
+      recentSyncs: recentSyncs ?? [],
+      lastSyncStatus: stats.last_sync_status ?? "unknown",
+      failedSyncsRecent: Number(stats.failed_syncs_recent) ?? 0,
+      systemHealthy: stats.system_healthy ?? false,
+    };
+  }
+
+  // Fallback to individual queries (slower but backward compatible)
   const [
     companies,
     priceRows,
@@ -58,8 +95,30 @@ export async function fetchOverviewStats() {
 }
 
 // ─── Genesis Engine / Sync Logs ──────────────────────────────────────────────
-
+/**
+ * Fetch sync logs with performance metrics
+ * Uses optimized RPC function if available
+ */
 export async function fetchSyncLogs(limit = 50) {
+  // Try RPC first
+  const { data: rpcData, error: rpcError } = await supabase.rpc('admin_get_sync_logs', { p_limit: limit });
+
+  if (!rpcError && rpcData) {
+    return rpcData.map((row: any) => ({
+      id: row.id,
+      sync_type: row.sync_type,
+      status: row.status,
+      started_at: row.started_at,
+      completed_at: row.completed_at,
+      duration_ms: row.duration_seconds ? Math.round(row.duration_seconds * 1000) : null,
+      records_processed: row.records_processed,
+      records_failed: row.records_failed,
+      error_message: row.error_message,
+      success_rate: row.success_rate,
+    }));
+  }
+
+  // Fallback to direct query
   const { data, error } = await supabase
     .from("sync_logs")
     .select("id, sync_type, status, started_at, completed_at, duration_ms, records_processed, records_failed, error_message, metadata")
@@ -69,9 +128,82 @@ export async function fetchSyncLogs(limit = 50) {
   return data ?? [];
 }
 
-// ─── Users (with settings, screens, watchlist counts) ────────────────────────
+/**
+ * Fetch security events summary for analytics
+ */
+export async function fetchSecurityEventsSummary(days = 30) {
+  const { data, error } = await supabase.rpc('admin_get_security_events_summary', { p_days: days });
 
+  if (error) {
+    // Fallback: fetch raw events and aggregate client-side
+    const { data: events } = await supabase
+      .from("security_events")
+      .select("event_type, source, user_id, created_at")
+      .gte("created_at", new Date(Date.now() - days * 86400000).toISOString())
+      .order("created_at", { ascending: false });
+
+    if (!events) return [];
+
+    const summary = new Map<string, any>();
+    events.forEach((event) => {
+      if (!summary.has(event.event_type)) {
+        summary.set(event.event_type, {
+          event_type: event.event_type,
+          event_count: 0,
+          first_occurrence: event.created_at,
+          last_occurrence: event.created_at,
+          unique_users: new Set(),
+          unique_sources: new Set(),
+        });
+      }
+      const s = summary.get(event.event_type);
+      s.event_count++;
+      if (event.created_at < s.first_occurrence) s.first_occurrence = event.created_at;
+      if (event.created_at > s.last_occurrence) s.last_occurrence = event.created_at;
+      if (event.user_id) s.unique_users.add(event.user_id);
+      if (event.source) s.unique_sources.add(event.source);
+    });
+
+    return Array.from(summary.values()).map((s) => ({
+      ...s,
+      unique_users: s.unique_users.size,
+      unique_sources: s.unique_sources.size,
+    }));
+  }
+
+  return data ?? [];
+}
+
+// ─── Users (with settings, screens, watchlist counts) ────────────────────────
+/**
+ * Fetch all users with aggregated details
+ * Uses optimized RPC function if available, falls back to individual queries
+ */
 export async function fetchUsers() {
+  // Try RPC first (much faster - single query with joins)
+  const { data: rpcData, error: rpcError } = await supabase.rpc('admin_get_users_with_details');
+
+  if (!rpcError && rpcData) {
+    return rpcData.map((row: any) => ({
+      id: row.user_id,
+      email: row.email,
+      display_name: row.display_name,
+      full_name: row.full_name,
+      subscription_tier: row.subscription_tier,
+      role: row.role,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      settings: {
+        theme: row.settings_theme,
+        compact_mode: row.settings_compact_mode,
+      },
+      screenCount: Number(row.screen_count) ?? 0,
+      watchlistCount: Number(row.watchlist_count) ?? 0,
+      lastActivity: row.last_activity,
+    }));
+  }
+
+  // Fallback to individual queries (slower but backward compatible)
   const [profiles, settings, screens, watchlistsRes] = await Promise.all([
     supabase
       .from("user_profiles")
