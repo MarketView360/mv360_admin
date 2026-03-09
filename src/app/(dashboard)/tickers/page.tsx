@@ -7,6 +7,8 @@ import {
     refreshGenesisTicker,
     setGenesisTickerStatus,
     addGenesisTicker,
+    recomputeAllTechnicals,
+    recomputeTickerTechnicals,
 } from "@/lib/api";
 import {
     Card,
@@ -34,6 +36,17 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Progress } from "@/components/ui/progress";
 import {
     Select,
@@ -132,7 +145,10 @@ export default function TickersPage() {
     const [error, setError] = useState<string | null>(null);
     const [genesisUnavailable, setGenesisUnavailable] = useState(false);
     const [searching, setSearching] = useState(false);
+    const [successMsg, setSuccessMsg] = useState<string | null>(null);
     const [expandedTickerId, setExpandedTickerId] = useState<number | null>(null);
+    const [isRecomputingRow, setIsRecomputingRow] = useState<string | null>(null);
+    const [isBulkRecomputing, setIsBulkRecomputing] = useState(false);
 
     const sessionRef = useRef(session);
     useEffect(() => { sessionRef.current = session; }, [session]);
@@ -445,6 +461,40 @@ export default function TickersPage() {
         }
     };
 
+    const handleBulkRecompute = async () => {
+        const token = sessionRef.current?.access_token;
+        if (!token) return;
+        setIsBulkRecomputing(true);
+        setError(null);
+        setSuccessMsg(null);
+        try {
+            await recomputeAllTechnicals(token);
+            setSuccessMsg("Bulk recompute started. This runs in the background and trades off local CPU for zero API calls. May take up to 2 minutes.");
+        } catch (err: any) {
+            console.error("Bulk recompute error:", err);
+            setError(`Failed to trigger bulk recompute: ${err.message || "Unknown error"}`);
+        } finally {
+            setIsBulkRecomputing(false);
+        }
+    };
+
+    const handleRowRecompute = async (symbol: string) => {
+        const token = sessionRef.current?.access_token;
+        if (!token) return;
+        setIsRecomputingRow(symbol);
+        setError(null);
+        setSuccessMsg(null);
+        try {
+            await recomputeTickerTechnicals(token, symbol);
+            setSuccessMsg(`Recompute started for ${symbol}. Check back shortly for updated metrics.`);
+        } catch (err: any) {
+            console.error(`Row recompute error for ${symbol}:`, err);
+            setError(`Failed to trigger recompute for ${symbol}: ${err.message || "Unknown error"}`);
+        } finally {
+            setIsRecomputingRow(null);
+        }
+    };
+
     // Filter displayed tickers locally for secondary search/filter if needed, 
     // but primary search is server-side now.
     const filteredTickers = tickers.filter(t =>
@@ -484,6 +534,34 @@ export default function TickersPage() {
                     <p className="text-muted-foreground">Manage the market data universe</p>
                 </div>
                 <div className="flex gap-2">
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button variant="outline" disabled={batchLoading || isBulkRecomputing}>
+                                {isBulkRecomputing ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Activity className="mr-2 h-4 w-4" />
+                                )}
+                                Recompute All Technicals
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent className="border-slate-800 bg-slate-950">
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Recompute All Technical Indicators?</AlertDialogTitle>
+                                <AlertDialogDescription className="text-slate-400">
+                                    This will recalculate all technical indicators (RSI, MACD, Moving Averages, etc.) for the entire active universe using existing market data.
+                                    <br /><br />
+                                    <strong className="text-amber-500">Note:</strong> This process consumes zero API credits but is computationally expensive. It runs asynchronously in the background and may take ~2 minutes to complete for ~4,600 tickers.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel className="border-slate-800 bg-transparent hover:bg-slate-900 text-slate-200">Cancel</AlertDialogCancel>
+                                <AlertDialogAction className="bg-blue-600 hover:bg-blue-700 text-white" onClick={handleBulkRecompute}>
+                                    Start Bulk Recompute
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
                     <Button variant="outline" onClick={() => loadData()}>
                         <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                         Refresh
@@ -525,7 +603,7 @@ export default function TickersPage() {
 
             {/* Error Banner */}
             {error && !genesisUnavailable && (
-                <Card className="border-red-500/50 bg-red-500/5">
+                <Card className="border-red-500/50 bg-red-500/5 mb-6">
                     <CardContent className="py-4">
                         <div className="flex items-center gap-3 text-red-500">
                             <XCircle className="h-5 w-5 flex-shrink-0" />
@@ -541,6 +619,29 @@ export default function TickersPage() {
                             >
                                 <RefreshCw className="h-4 w-4 mr-1" />
                                 Retry
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Success Banner */}
+            {successMsg && !genesisUnavailable && (
+                <Card className="border-emerald-500/50 bg-emerald-500/5 mb-6">
+                    <CardContent className="py-4">
+                        <div className="flex items-center gap-3 text-emerald-500">
+                            <CheckCircle2 className="h-5 w-5 flex-shrink-0" />
+                            <div>
+                                <p className="font-medium">Action Successful</p>
+                                <p className="text-sm text-emerald-400/80">{successMsg}</p>
+                            </div>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="ml-auto hover:bg-emerald-500/20 text-emerald-500"
+                                onClick={() => setSuccessMsg(null)}
+                            >
+                                <XCircle className="h-4 w-4" />
                             </Button>
                         </div>
                     </CardContent>
@@ -858,6 +959,22 @@ export default function TickersPage() {
                                                                 <p className="text-xs text-muted-foreground">Last Price Date</p>
                                                                 <p className="text-sm font-semibold">{ticker.last_price_date || 'N/A'}</p>
                                                             </div>
+                                                        </div>
+                                                        <div className="mt-4 flex justify-end">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => handleRowRecompute(ticker.ticker)}
+                                                                disabled={isRecomputingRow === ticker.ticker}
+                                                                className="text-xs bg-slate-900 border-slate-700 hover:bg-slate-800"
+                                                            >
+                                                                {isRecomputingRow === ticker.ticker ? (
+                                                                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <Activity className="mr-2 h-3.5 w-3.5" />
+                                                                )}
+                                                                Recompute Indicators
+                                                            </Button>
                                                         </div>
                                                     </TableCell>
                                                 </TableRow>

@@ -603,8 +603,8 @@ export async function fetchRevenueData() {
 
 const GENESIS_URL =
   (process.env.NEXT_PUBLIC_GENESIS_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:4000").replace(/\/$/, ""); // Remove trailing slash
+    process.env.NEXT_PUBLIC_API_URL ??
+    "http://localhost:4000").replace(/\/$/, ""); // Remove trailing slash
 
 /**
  * Helper to fetch from Genesis API with graceful error handling
@@ -684,6 +684,26 @@ export async function fetchGenesisDashboard(token: string) {
 
 export async function fetchCreditAnalytics(token: string) {
   return fetchGenesis(`/admin/credits`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
+    }
+  });
+}
+
+export async function recomputeAllTechnicals(token: string) {
+  return fetchGenesis(`/admin/tickers/recompute-all-technicals`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
+    }
+  });
+}
+
+export async function recomputeTickerTechnicals(token: string, symbol: string) {
+  return fetchGenesis(`/admin/tickers/${symbol}/recompute-technicals`, {
+    method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
