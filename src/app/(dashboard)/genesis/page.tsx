@@ -150,9 +150,9 @@ export default function GenesisPage() {
   };
 
   useEffect(() => {
-    loadData();
+    if (session?.access_token) loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [session?.access_token]);
 
   // Stable 5s polling interval — set up once on mount, reads running state via ref
   useEffect(() => {

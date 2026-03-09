@@ -14,7 +14,7 @@ const PROTECTED_ROUTES = ["/overview", "/analytics", "/users", "/data-quality", 
 // Routes that require admin check (but user might already be logged in)
 const AUTH_ROUTES = ["/login"];
 
-export async function middleware(request: NextRequest) {
+export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Skip middleware for static files and API routes
@@ -46,15 +46,15 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // Get current session
-  const { data: { session } } = await supabase.auth.getSession();
+  // Get current user (authenticates against Supabase Auth server — more secure than getSession)
+  const { data: { user } } = await supabase.auth.getUser();
 
   // Check if route is protected
   const isProtectedRoute = PROTECTED_ROUTES.some(route => pathname.startsWith(route));
   const isAuthRoute = AUTH_ROUTES.some(route => pathname.startsWith(route));
 
   // Handle unauthenticated users
-  if (!session) {
+  if (!user) {
     if (isProtectedRoute) {
       // Redirect to login with return URL
       const loginUrl = new URL("/login", request.url);
@@ -65,19 +65,19 @@ export async function middleware(request: NextRequest) {
   }
 
   // User is authenticated - check admin status for protected routes
-  if (session && (isProtectedRoute || pathname === "/" || pathname === "")) {
-    const isAdmin = checkIsAdmin(session.user);
+  if (user && (isProtectedRoute || pathname === "/" || pathname === "")) {
+    const isAdmin = checkIsAdmin(user);
 
     if (!isAdmin) {
       // Log unauthorized access attempt
       try {
         await supabase.from("security_events").insert({
-          user_id: session.user.id,
+          user_id: user.id,
           event_type: "access_denied",
           action: `Non-admin access attempt to ${pathname}`,
           source: "admin_portal_middleware",
           metadata: {
-            email: session.user.email,
+            email: user.email,
             pathname,
             timestamp: new Date().toISOString(),
           },
@@ -97,7 +97,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // If already logged in and trying to access login page, redirect to overview
-  if (session && isAuthRoute) {
+  if (user && isAuthRoute) {
     return NextResponse.redirect(new URL("/overview", request.url));
   }
 
@@ -128,27 +128,27 @@ function addSecurityHeaders(response: NextResponse, request: NextRequest): NextR
   const genesisUrl = process.env.NEXT_PUBLIC_GENESIS_URL || backendUrl;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 
-  // Extract hostname for CSP
-  const getHostname = (url: string) => {
+  // Extract origin (scheme + host + port) for CSP — hostname alone drops the port
+  const getOrigin = (url: string) => {
     try {
-      return new URL(url).hostname;
+      return new URL(url).origin;
     } catch {
       return null;
     }
   };
 
-  const backendHost = getHostname(backendUrl);
-  const genesisHost = getHostname(genesisUrl);
-  const supabaseHost = getHostname(supabaseUrl);
+  const backendOrigin = getOrigin(backendUrl);
+  const genesisOrigin = getOrigin(genesisUrl);
+  const supabaseOrigin = getOrigin(supabaseUrl);
 
   const connectSources = [
     "'self'",
-    supabaseHost || "https://*.supabase.co",
-    backendHost || "http://localhost:*",
+    supabaseOrigin || "https://*.supabase.co",
+    backendOrigin || "http://localhost:*",
   ];
 
-  if (genesisHost && genesisHost !== backendHost) {
-    connectSources.push(genesisHost);
+  if (genesisOrigin && genesisOrigin !== backendOrigin) {
+    connectSources.push(genesisOrigin);
   }
 
   // Content Security Policy - restrict resource loading
