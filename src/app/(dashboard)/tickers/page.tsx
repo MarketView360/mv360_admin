@@ -84,21 +84,33 @@ interface Ticker {
     last_price_date: string | null;
     total_data_points: number;
     indicator_count: number;
-    // Extended metrics
+    // Extended metrics - matching backend genesis.service.ts field names
     market_cap: number | null;
-    pe_ratio: number | null;
-    pb_ratio: number | null;
+    volume: number | null;
+    pe: number | null;
+    forward_pe: number | null;
+    peg: number | null;
+    pb: number | null;
     dividend_yield: number | null;
+    ev_ebitda: number | null;
+    price_to_sales: number | null;
+    price_to_cash_flow: number | null;
     roe: number | null;
+    roce: number | null;
+    roa: number | null;
+    opm: number | null;
+    net_margin: number | null;
     debt_to_equity: number | null;
     current_ratio: number | null;
+    quick_ratio: number | null;
     operating_cf: number | null;
     free_cf: number | null;
     beta: number | null;
     rsi: number | null;
     eps_ttm: number | null;
     revenue_ttm: number | null;
-    net_margin: number | null;
+    sales_cagr_3y: number | null;
+    profit_cagr_5y: number | null;
     price_change_1y: number | null;
 }
 
@@ -736,8 +748,8 @@ export default function TickersPage() {
                                                 </TableCell>
                                                 <TableCell className="w-[150px]">
                                                     <div className="flex flex-wrap gap-1">
-                                                        {ticker.pe_ratio && (
-                                                            <span className="text-xs bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded" title="P/E Ratio">P/E: {ticker.pe_ratio.toFixed(1)}</span>
+                                                        {ticker.pe && (
+                                                            <span className="text-xs bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded" title="P/E Ratio">P/E: {ticker.pe.toFixed(1)}</span>
                                                         )}
                                                         {ticker.market_cap && (
                                                             <span className="text-xs bg-slate-800 text-slate-200 px-1.5 py-0.5 rounded" title="Market Cap">MC: {(ticker.market_cap / 1e9).toFixed(1)}B</span>
@@ -782,11 +794,11 @@ export default function TickersPage() {
                                                             </div>
                                                             <div className="space-y-1">
                                                                 <p className="text-xs text-muted-foreground">P/E Ratio</p>
-                                                                <p className="text-sm font-semibold">{ticker.pe_ratio?.toFixed(2) ?? 'N/A'}</p>
+                                                                <p className="text-sm font-semibold">{ticker.pe?.toFixed(2) ?? 'N/A'}</p>
                                                             </div>
                                                             <div className="space-y-1">
                                                                 <p className="text-xs text-muted-foreground">P/B Ratio</p>
-                                                                <p className="text-sm font-semibold">{ticker.pb_ratio?.toFixed(2) ?? 'N/A'}</p>
+                                                                <p className="text-sm font-semibold">{ticker.pb?.toFixed(2) ?? 'N/A'}</p>
                                                             </div>
                                                             <div className="space-y-1">
                                                                 <p className="text-xs text-muted-foreground">Dividend Yield</p>
