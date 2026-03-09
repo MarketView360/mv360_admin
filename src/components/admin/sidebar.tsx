@@ -87,9 +87,9 @@ export function AdminSidebar({ collapsed = false, onToggle }: AdminSidebarProps)
             src={logoSrc}
             alt="MarketView360"
             width={isCollapsed ? 32 : 140}
-            height={24}
+            height={isCollapsed ? 32 : 24}
             priority
-            className={cn("transition-all", isCollapsed && "h-8 w-8")}
+            className={cn("transition-all", isCollapsed ? "h-8 w-8" : "w-auto")}
           />
         </Link>
         {!isCollapsed && <ThemeToggle />}
@@ -143,7 +143,7 @@ export function AdminSidebar({ collapsed = false, onToggle }: AdminSidebarProps)
             );
           }
 
-          return navItem;
+          return <div key={item.href}>{navItem}</div>;
         })}
       </nav>
 
