@@ -812,6 +812,105 @@ export async function testGenesisAlerts(token: string) {
   });
 }
 
+// ─── Redis Logs ────────────────────────────────────────────────────────────────
+
+export interface RedisLogEntry {
+  id?: string;
+  timestamp: string;
+  level: 'info' | 'warn' | 'error' | 'debug';
+  operation: string;
+  key?: string;
+  duration_ms?: number;
+  success: boolean;
+  error_message?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface RedisStatus {
+  connected: boolean;
+  cacheStats: {
+    hits: number;
+    misses: number;
+    hitRate: number;
+    keyCount: number;
+  } | null;
+  logStats: {
+    total: number;
+    byLevel: Record<string, number>;
+    byOperation: Record<string, number>;
+    errorRate: number;
+  } | null;
+}
+
+export async function fetchRedisStatus(token: string): Promise<RedisStatus | null> {
+  return fetchGenesis(`/admin/redis/status`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
+    }
+  });
+}
+
+export async function fetchRedisLogs(
+  token: string,
+  options: {
+    limit?: number;
+    offset?: number;
+    level?: string;
+    operation?: string;
+  } = {}
+): Promise<{ logs: RedisLogEntry[]; total: number } | null> {
+  const params = new URLSearchParams();
+  if (options.limit) params.append("limit", String(options.limit));
+  if (options.offset) params.append("offset", String(options.offset));
+  if (options.level) params.append("level", options.level);
+  if (options.operation) params.append("operation", options.operation);
+
+  return fetchGenesis(`/admin/redis/logs?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
+    }
+  });
+}
+
+export async function fetchRedisRecentLogs(token: string, limit = 100): Promise<RedisLogEntry[]> {
+  const result = await fetchGenesis<RedisLogEntry[]>(`/admin/redis/logs/recent?limit=${limit}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
+    }
+  });
+  return result ?? [];
+}
+
+export async function fetchRedisLogStats(token: string, hours = 24) {
+  return fetchGenesis(`/admin/redis/logs/stats?hours=${hours}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
+    }
+  });
+}
+
+export async function clearRedisCache(token: string, prefix: string): Promise<{ cleared: number } | null> {
+  return fetchGenesis(`/admin/redis/cache/clear?prefix=${encodeURIComponent(prefix)}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
+    }
+  });
+}
+
+export async function pingRedis(token: string): Promise<{ pong: boolean; latencyMs: number } | null> {
+  return fetchGenesis(`/admin/redis/ping`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
+    }
+  });
+}
+
 export async function fetchGenesisTickers(
   token: string,
   page = 1,

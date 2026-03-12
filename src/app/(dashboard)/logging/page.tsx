@@ -30,8 +30,9 @@ import {
   ScrollText,
   Filter,
   ShieldAlert,
+  Database,
 } from "lucide-react";
-import { fetchSyncLogs, fetchSecurityEvents, fetchAdminAuthLogs } from "@/lib/api";
+import { fetchSyncLogs, fetchSecurityEvents, fetchAdminAuthLogs, fetchRedisLogs, fetchRedisStatus, RedisLogEntry, RedisStatus } from "@/lib/api";
 
 interface SyncLog {
   id: string;
@@ -98,20 +99,27 @@ export default function LoggingPage() {
   const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
   const [securityEvents, setSecurityEvents] = useState<SecurityEvent[]>([]);
   const [adminAuthLogs, setAdminAuthLogs] = useState<AdminAuthLog[]>([]);
+  const [redisLogs, setRedisLogs] = useState<RedisLogEntry[]>([]);
+  const [redisStatus, setRedisStatus] = useState<RedisStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("");
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [logs, events, authLogs] = await Promise.all([
+      const token = localStorage.getItem("admin_token") || "";
+      const [logs, events, authLogs, redisResult, status] = await Promise.all([
         fetchSyncLogs(100),
         fetchSecurityEvents(100),
         fetchAdminAuthLogs(200),
+        fetchRedisLogs(token, { limit: 200 }),
+        fetchRedisStatus(token),
       ]);
       setSyncLogs(logs);
       setSecurityEvents(events);
       setAdminAuthLogs(authLogs);
+      setRedisLogs(redisResult?.logs ?? []);
+      setRedisStatus(status);
     } finally {
       setLoading(false);
     }
@@ -144,6 +152,14 @@ export default function LoggingPage() {
       ((l.metadata?.email as string) ?? "").toLowerCase().includes(filter.toLowerCase())
   );
 
+  const filteredRedisLogs = redisLogs.filter(
+    (l) =>
+      !filter ||
+      l.operation.toLowerCase().includes(filter.toLowerCase()) ||
+      (l.key ?? "").toLowerCase().includes(filter.toLowerCase()) ||
+      l.level.toLowerCase().includes(filter.toLowerCase())
+  );
+
   const errorCount = syncLogs.filter(
     (l) => l.status === "failed" || l.status === "error"
   ).length;
@@ -151,6 +167,8 @@ export default function LoggingPage() {
   const threatCount = adminAuthLogs.filter(
     (l) => l.event_type === "login_failed" || l.event_type === "brute_force_lockout" || l.event_type === "access_denied"
   ).length;
+
+  const redisErrorCount = redisLogs.filter((l) => l.level === "error").length;
 
   return (
     <div className="space-y-6">
@@ -167,7 +185,7 @@ export default function LoggingPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -216,6 +234,25 @@ export default function LoggingPage() {
             </div>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Redis Status
+            </CardTitle>
+            <Database className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <div className={`h-2 w-2 rounded-full ${redisStatus?.connected ? "bg-emerald-500" : "bg-red-500"}`} />
+              <span className="text-sm">{redisStatus?.connected ? "Connected" : "Disconnected"}</span>
+            </div>
+            {redisStatus?.cacheStats && (
+              <div className="mt-1 text-xs text-muted-foreground">
+                Hit rate: {((redisStatus.cacheStats.hitRate ?? 0) * 100).toFixed(1)}%
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex items-center gap-2">
@@ -248,6 +285,14 @@ export default function LoggingPage() {
           </TabsTrigger>
           <TabsTrigger value="admin-auth">
             Admin Auth ({filteredAuthLogs.length})
+          </TabsTrigger>
+          <TabsTrigger value="redis">
+            Redis ({filteredRedisLogs.length})
+            {redisErrorCount > 0 && (
+              <Badge className="ml-1 bg-red-600/20 text-red-700 dark:text-red-400 border-0 text-[10px] px-1">
+                {redisErrorCount}
+              </Badge>
+            )}
           </TabsTrigger>
         </TabsList>
 
@@ -409,6 +454,87 @@ export default function LoggingPage() {
                           </TableCell>
                           <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                             {new Date(log.created_at).toLocaleString()}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="redis">
+          <Card>
+            <CardHeader>
+              <CardTitle>Redis Cache Logs</CardTitle>
+              <CardDescription>
+                Cache operations and performance logs
+                {redisStatus?.cacheStats && (
+                  <span className="ml-2 text-xs">
+                    • Keys: {redisStatus.cacheStats.keyCount} • Hits: {redisStatus.cacheStats.hits} • Misses: {redisStatus.cacheStats.misses}
+                  </span>
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="space-y-2">
+                  {[...Array(8)].map((_, i) => (
+                    <Skeleton key={i} className="h-10 w-full" />
+                  ))}
+                </div>
+              ) : filteredRedisLogs.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">
+                  No Redis logs found. Redis may not be configured or connected.
+                </p>
+              ) : (
+                <ScrollArea className="h-[500px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Level</TableHead>
+                        <TableHead>Operation</TableHead>
+                        <TableHead>Key</TableHead>
+                        <TableHead className="text-right">Duration</TableHead>
+                        <TableHead>Timestamp</TableHead>
+                        <TableHead>Error</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredRedisLogs.map((log, idx) => (
+                        <TableRow key={log.id || idx}>
+                          <TableCell>
+                            <Badge
+                              className={
+                                log.level === "error"
+                                  ? "bg-red-600/20 text-red-700 dark:text-red-400 border-0"
+                                  : log.level === "warn"
+                                  ? "bg-yellow-600/20 text-yellow-700 dark:text-yellow-400 border-0"
+                                  : log.level === "debug"
+                                  ? "bg-gray-600/20 text-gray-700 dark:text-gray-400 border-0"
+                                  : "bg-emerald-600/20 text-emerald-700 dark:text-emerald-400 border-0"
+                              }
+                            >
+                              {log.level.toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs">
+                            {log.operation}
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate font-mono text-xs text-muted-foreground">
+                            {log.key ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-right text-xs tabular-nums text-muted-foreground">
+                            {log.duration_ms != null ? `${log.duration_ms.toFixed(1)}ms` : "—"}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                            {new Date(log.timestamp).toLocaleString()}
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate text-xs text-destructive">
+                            {log.error_message || (
+                              <span className="text-emerald-600 dark:text-emerald-400">OK</span>
+                            )}
                           </TableCell>
                         </TableRow>
                       ))}
