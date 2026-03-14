@@ -180,40 +180,14 @@ export async function fetchSecurityEventsSummary(days = 30) {
  * Uses optimized RPC function if available, falls back to individual queries
  */
 export async function fetchUsers() {
-  // Try RPC first (much faster - single query with joins)
-  const { data: rpcData, error: rpcError } = await supabase.rpc('admin_get_users_with_details');
-
-  if (!rpcError && rpcData) {
-    return rpcData.map((row: any) => ({
-      id: row.user_id,
-      email: row.email,
-      display_name: row.display_name,
-      full_name: row.full_name,
-      subscription_tier: row.subscription_tier,
-      role: row.role,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      settings: {
-        theme: row.settings_theme,
-        compact_mode: row.settings_compact_mode,
-      },
-      screenCount: Number(row.screen_count) ?? 0,
-      watchlistCount: Number(row.watchlist_count) ?? 0,
-      lastActivity: row.last_activity,
-    }));
-  }
-
-  // Fallback to individual queries (slower but backward compatible)
-  const [profiles, settings, screens, watchlistsRes] = await Promise.all([
+  // Fallback to individual queries since RPC may not exist or may have schema mismatch
+  const [profiles, savedScreens, watchlistsRes] = await Promise.all([
     supabase
       .from("user_profiles")
       .select("id, email, display_name, full_name, subscription_tier, role, created_at, updated_at, onboarded_at, billing_customer_id, newsletter_opt_in, announcements_opt_in, alerts_opt_in, events_and_promotions_opt_in, temp_suspend, perm_suspend, metadata, preferences")
       .order("created_at", { ascending: false }),
     supabase
-      .from("user_settings")
-      .select("user_id, theme, text_size, compact_mode, reduce_animations, desktop_notifications, email_notifications, use_custom_ai_keys"),
-    supabase
-      .from("user_screens")
+      .from("user_saved_screens")
       .select("user_id, id, updated_at")
       .order("updated_at", { ascending: false }),
     supabase
@@ -222,12 +196,9 @@ export async function fetchUsers() {
       .order("updated_at", { ascending: false }),
   ]);
 
-  const settingsMap = new Map<string, (typeof settings.data extends (infer T)[] | null ? T : never)>();
-  (settings.data ?? []).forEach((s) => settingsMap.set(s.user_id, s));
-
   const screenCounts = new Map<string, number>();
   const screenLastActivity = new Map<string, string>();
-  (screens.data ?? []).forEach((s) => {
+  (savedScreens.data ?? []).forEach((s) => {
     screenCounts.set(s.user_id, (screenCounts.get(s.user_id) ?? 0) + 1);
     if (!screenLastActivity.has(s.user_id) || (s.updated_at && s.updated_at > screenLastActivity.get(s.user_id)!)) {
       screenLastActivity.set(s.user_id, s.updated_at || "");
@@ -253,7 +224,7 @@ export async function fetchUsers() {
 
     return {
       ...p,
-      settings: settingsMap.get(p.id) ?? null,
+      settings: null,
       screenCount: screenCounts.get(p.id) ?? 0,
       watchlistCount: watchlistCounts.get(p.id) ?? 0,
       lastActivity,
@@ -334,6 +305,235 @@ export async function deleteUserAccount(userId: string) {
   } catch (err) {
     console.error("Auth deletion not available or failed:", err);
     // Continue anyway as profile deletion succeeded
+  }
+}
+
+// ─── User Invitation ──────────────────────────────────────────────────────────
+
+export interface InviteUserParams {
+  email: string;
+  full_name?: string;
+  subscription_tier?: 'free' | 'premium' | 'max';
+  role?: 'user' | 'admin';
+  send_email?: boolean;
+}
+
+export interface InviteUserResult {
+  success: boolean;
+  user?: {
+    id: string;
+    email: string;
+    invited_at: string;
+  };
+  error?: string;
+  method?: 'supabase' | 'fallback';
+}
+
+/**
+ * Validate email format
+ */
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+/**
+ * Check if user already exists by email
+ */
+export async function checkUserExists(email: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .select("id")
+    .eq("email", email)
+    .maybeSingle();
+
+  if (error && error.code !== "PGRST116") {
+    console.error("Error checking user existence:", error);
+    throw new Error("Failed to check if user exists");
+  }
+
+  return !!data;
+}
+
+/**
+ * Invite a new user via Supabase Auth
+ * Uses Supabase's built-in invite functionality which integrates with Brevo
+ */
+export async function inviteUser(params: InviteUserParams): Promise<InviteUserResult> {
+  const { email, full_name, subscription_tier = 'free', role = 'user', send_email = true } = params;
+
+  // Validate email format
+  if (!isValidEmail(email)) {
+    return {
+      success: false,
+      error: "Invalid email format"
+    };
+  }
+
+  // Check if user already exists
+  try {
+    const exists = await checkUserExists(email);
+    if (exists) {
+      return {
+        success: false,
+        error: "User with this email already exists"
+      };
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to validate user"
+    };
+  }
+
+  // Invite user via Supabase Auth Admin API
+  try {
+    const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
+      data: {
+        full_name: full_name || '',
+        subscription_tier,
+        role,
+      },
+      redirectTo: `${window.location.origin}/auth/callback`,
+    });
+
+    if (error) {
+      console.error("Supabase invite error:", error);
+      
+      // If Supabase invite fails and fallback is needed
+      if (!send_email) {
+        return {
+          success: false,
+          error: error.message || "Failed to invite user via Supabase"
+        };
+      }
+
+      // Try fallback email service
+      const fallbackResult = await sendInviteFallbackEmail(email, full_name);
+      if (!fallbackResult.success) {
+        return {
+          success: false,
+          error: `Supabase invite failed: ${error.message}. Fallback also failed: ${fallbackResult.error}`
+        };
+      }
+
+      return {
+        success: true,
+        method: 'fallback',
+        user: {
+          id: fallbackResult.userId || '',
+          email,
+          invited_at: new Date().toISOString()
+        }
+      };
+    }
+
+    // Create user profile
+    const { error: profileError } = await supabase
+      .from("user_profiles")
+      .insert({
+        id: data.user.id,
+        email,
+        full_name: full_name || '',
+        subscription_tier,
+        role,
+      });
+
+    if (profileError) {
+      console.error("Error creating user profile:", profileError);
+      // User is invited but profile creation failed - log but don't fail
+    }
+
+    return {
+      success: true,
+      method: 'supabase',
+      user: {
+        id: data.user.id,
+        email: data.user.email || email,
+        invited_at: data.user.created_at
+      }
+    };
+  } catch (err) {
+    console.error("Invite error:", err);
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unknown error occurred"
+    };
+  }
+}
+
+/**
+ * Fallback email service using nodemailer
+ * Only called if Supabase invite fails
+ */
+async function sendInviteFallbackEmail(email: string, fullName?: string): Promise<{ success: boolean; error?: string; userId?: string }> {
+  try {
+    const response = await fetch('/api/invite-fallback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, fullName })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      return { success: false, error };
+    }
+
+    const result = await response.json();
+    return { success: true, userId: result.userId };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Fallback email service failed"
+    };
+  }
+}
+
+/**
+ * Resend invitation to a user
+ */
+export async function resendInvitation(userId: string): Promise<InviteUserResult> {
+  try {
+    const { data: userData, error: userError } = await supabase
+      .from("user_profiles")
+      .select("email, full_name")
+      .eq("id", userId)
+      .single();
+
+    if (userError || !userData) {
+      return {
+        success: false,
+        error: "User not found"
+      };
+    }
+
+    // Resend via Supabase
+    const { error } = await supabase.auth.admin.inviteUserByEmail(userData.email, {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    });
+
+    if (error) {
+      console.error("Resend invite error:", error);
+      return {
+        success: false,
+        error: error.message || "Failed to resend invitation"
+      };
+    }
+
+    return {
+      success: true,
+      method: 'supabase',
+      user: {
+        id: userId,
+        email: userData.email,
+        invited_at: new Date().toISOString()
+      }
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Unknown error occurred"
+    };
   }
 }
 
