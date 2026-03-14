@@ -46,6 +46,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Redirect to main app (www.marketview360.io) for user signup
+    const redirectUrl = 'https://www.marketview360.io/auth/callback';
+
     // Invite user via Supabase Admin API
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       data: {
@@ -53,7 +56,7 @@ export async function POST(request: NextRequest) {
         subscription_tier,
         role,
       },
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || request.headers.get('origin') || 'https://mv360-admin.vercel.app'}/auth/callback`,
+      redirectTo: redirectUrl,
     });
 
     if (error) {
