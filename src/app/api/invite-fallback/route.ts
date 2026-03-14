@@ -60,11 +60,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate password reset link
+    // Generate signup link with temporary password
     const { data: resetData, error: resetError } = await supabase.auth.admin.generateLink({
       type: 'signup',
       email,
+      password: tempPassword,
       options: {
+        data: {
+          full_name: fullName || '',
+        },
         redirectTo: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/auth/callback`,
       }
     });
