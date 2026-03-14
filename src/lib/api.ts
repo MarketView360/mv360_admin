@@ -356,11 +356,11 @@ export async function checkUserExists(email: string): Promise<boolean> {
 }
 
 /**
- * Invite a new user via Supabase Auth
- * Uses Supabase's built-in invite functionality which integrates with Brevo
+ * Invite a new user via server API
+ * Uses server-side Supabase Admin API with service_role key
  */
 export async function inviteUser(params: InviteUserParams): Promise<InviteUserResult> {
-  const { email, full_name, subscription_tier = 'free', role = 'user', send_email = true } = params;
+  const { email, full_name, subscription_tier = 'free', role = 'user' } = params;
 
   // Validate email format
   if (!isValidEmail(email)) {
@@ -370,7 +370,7 @@ export async function inviteUser(params: InviteUserParams): Promise<InviteUserRe
     };
   }
 
-  // Check if user already exists
+  // Check if user already exists (client-side check for better UX)
   try {
     const exists = await checkUserExists(email);
     if (exists) {
@@ -380,79 +380,33 @@ export async function inviteUser(params: InviteUserParams): Promise<InviteUserRe
       };
     }
   } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to validate user"
-    };
+    // Continue anyway - server will do the final check
+    console.warn("Client-side user check failed, continuing:", err);
   }
 
-  // Invite user via Supabase Auth Admin API
+  // Call server API to invite user
   try {
-    const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
-      data: {
-        full_name: full_name || '',
+    const response = await fetch('/api/invite-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email,
+        full_name,
         subscription_tier,
         role,
-      },
-      redirectTo: `${window.location.origin}/auth/callback`,
+      })
     });
 
-    if (error) {
-      console.error("Supabase invite error:", error);
-      
-      // If Supabase invite fails and fallback is needed
-      if (!send_email) {
-        return {
-          success: false,
-          error: error.message || "Failed to invite user via Supabase"
-        };
-      }
+    const result = await response.json();
 
-      // Try fallback email service
-      const fallbackResult = await sendInviteFallbackEmail(email, full_name);
-      if (!fallbackResult.success) {
-        return {
-          success: false,
-          error: `Supabase invite failed: ${error.message}. Fallback also failed: ${fallbackResult.error}`
-        };
-      }
-
+    if (!response.ok) {
       return {
-        success: true,
-        method: 'fallback',
-        user: {
-          id: fallbackResult.userId || '',
-          email,
-          invited_at: new Date().toISOString()
-        }
+        success: false,
+        error: result.error || "Failed to invite user"
       };
     }
 
-    // Create user profile
-    const { error: profileError } = await supabase
-      .from("user_profiles")
-      .insert({
-        id: data.user.id,
-        email,
-        full_name: full_name || '',
-        subscription_tier,
-        role,
-      });
-
-    if (profileError) {
-      console.error("Error creating user profile:", profileError);
-      // User is invited but profile creation failed - log but don't fail
-    }
-
-    return {
-      success: true,
-      method: 'supabase',
-      user: {
-        id: data.user.id,
-        email: data.user.email || email,
-        invited_at: data.user.created_at
-      }
-    };
+    return result;
   } catch (err) {
     console.error("Invite error:", err);
     return {
@@ -462,32 +416,6 @@ export async function inviteUser(params: InviteUserParams): Promise<InviteUserRe
   }
 }
 
-/**
- * Fallback email service using nodemailer
- * Only called if Supabase invite fails
- */
-async function sendInviteFallbackEmail(email: string, fullName?: string): Promise<{ success: boolean; error?: string; userId?: string }> {
-  try {
-    const response = await fetch('/api/invite-fallback', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, fullName })
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      return { success: false, error };
-    }
-
-    const result = await response.json();
-    return { success: true, userId: result.userId };
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Fallback email service failed"
-    };
-  }
-}
 
 /**
  * Resend invitation to a user

@@ -680,6 +680,78 @@ export default function UsersPage() {
         </Card>
       </div>
 
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Activity by Tier</CardTitle>
+            <CardDescription>Screen & watchlist usage across subscription levels</CardDescription>
+          </CardHeader>
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={[
+                {
+                  tier: "Free",
+                  screens: users.filter(u => (u.subscription_tier === "free" || !u.subscription_tier)).reduce((sum, u) => sum + (u.screenCount || 0), 0),
+                  watchlists: users.filter(u => (u.subscription_tier === "free" || !u.subscription_tier)).reduce((sum, u) => sum + (u.watchlistCount || 0), 0),
+                },
+                {
+                  tier: "Premium",
+                  screens: users.filter(u => u.subscription_tier === "premium").reduce((sum, u) => sum + (u.screenCount || 0), 0),
+                  watchlists: users.filter(u => u.subscription_tier === "premium").reduce((sum, u) => sum + (u.watchlistCount || 0), 0),
+                },
+                {
+                  tier: "Max",
+                  screens: users.filter(u => u.subscription_tier === "max").reduce((sum, u) => sum + (u.screenCount || 0), 0),
+                  watchlists: users.filter(u => u.subscription_tier === "max").reduce((sum, u) => sum + (u.watchlistCount || 0), 0),
+                }
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="tier" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="screens" fill="#3b82f6" name="Screens" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="watchlists" fill="#10b981" name="Watchlists" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Engagement Metrics</CardTitle>
+            <CardDescription>Average screens & watchlists per user by tier</CardDescription>
+          </CardHeader>
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={[
+                {
+                  tier: "Free",
+                  avgScreens: tierStats.free > 0 ? (users.filter(u => (u.subscription_tier === "free" || !u.subscription_tier)).reduce((sum, u) => sum + (u.screenCount || 0), 0) / tierStats.free).toFixed(1) : 0,
+                  avgWatchlists: tierStats.free > 0 ? (users.filter(u => (u.subscription_tier === "free" || !u.subscription_tier)).reduce((sum, u) => sum + (u.watchlistCount || 0), 0) / tierStats.free).toFixed(1) : 0,
+                },
+                {
+                  tier: "Premium",
+                  avgScreens: tierStats.premium > 0 ? (users.filter(u => u.subscription_tier === "premium").reduce((sum, u) => sum + (u.screenCount || 0), 0) / tierStats.premium).toFixed(1) : 0,
+                  avgWatchlists: tierStats.premium > 0 ? (users.filter(u => u.subscription_tier === "premium").reduce((sum, u) => sum + (u.watchlistCount || 0), 0) / tierStats.premium).toFixed(1) : 0,
+                },
+                {
+                  tier: "Max",
+                  avgScreens: tierStats.max > 0 ? (users.filter(u => u.subscription_tier === "max").reduce((sum, u) => sum + (u.screenCount || 0), 0) / tierStats.max).toFixed(1) : 0,
+                  avgWatchlists: tierStats.max > 0 ? (users.filter(u => u.subscription_tier === "max").reduce((sum, u) => sum + (u.watchlistCount || 0), 0) / tierStats.max).toFixed(1) : 0,
+                }
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="tier" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="avgScreens" stroke="#3b82f6" strokeWidth={2} name="Avg Screens" />
+                <Line type="monotone" dataKey="avgWatchlists" stroke="#10b981" strokeWidth={2} name="Avg Watchlists" />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card>
         <CardHeader>
           <CardTitle>Advanced Search & Filters</CardTitle>
