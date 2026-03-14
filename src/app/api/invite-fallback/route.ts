@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
+
+// Create Supabase Admin client with service_role key
+function createAdminClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Missing Supabase URL or service role key');
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
+}
 
 // Create email transporter
 function createTransporter() {
@@ -33,17 +50,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create Supabase client
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
+    // Create Supabase Admin client
+    const supabaseAdmin = createAdminClient();
 
     // Create user in auth.users (without sending email via Supabase)
     // This creates a pending user that needs to set their password
     const tempPassword = Math.random().toString(36).slice(-12) + 'A1!'; // Temporary strong password
     
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password: tempPassword,
       email_confirm: false, // User must confirm via our email
@@ -61,7 +75,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate signup link with temporary password
-    const { data: resetData, error: resetError } = await supabase.auth.admin.generateLink({
+    const { data: resetData, error: resetError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'signup',
       email,
       password: tempPassword,
