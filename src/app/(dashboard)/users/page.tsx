@@ -1024,7 +1024,13 @@ export default function UsersPage() {
                                 {user.role === "admin" && <Badge className={theme.danger}>Admin</Badge>}
                                 {user.perm_suspend && <Badge className={theme.danger}><Ban className="h-3 w-3 mr-1" />Perm Suspended</Badge>}
                                 {user.temp_suspend && <Badge className={theme.warning}><UserX className="h-3 w-3 mr-1" />Temp Suspended</Badge>}
-                                {!user.temp_suspend && !user.perm_suspend && <Badge className={theme.active}>Active</Badge>}
+                                {(user.metadata as Record<string, unknown>)?.deletion_requested && (
+                                  <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                                    <Trash2 className="h-3 w-3 mr-1" />
+                                    Deletion Requested
+                                  </Badge>
+                                )}
+                                {!user.temp_suspend && !user.perm_suspend && !(user.metadata as Record<string, unknown>)?.deletion_requested && <Badge className={theme.active}>Active</Badge>}
                               </div>
                             </div>
 

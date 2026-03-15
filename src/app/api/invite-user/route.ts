@@ -46,8 +46,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Redirect to main app (www.marketview360.io) for user signup
-    const redirectUrl = 'https://www.marketview360.io/auth/callback';
+    // Redirect to main app accept-invite page (handles hash-based tokens on client-side)
+    const redirectUrl = 'https://www.marketview360.io/auth/accept-invite';
 
     // Invite user via Supabase Admin API
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
