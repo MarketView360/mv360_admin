@@ -163,7 +163,7 @@ export default function GenesisPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleTrigger = async (type: "daily" | "weekly" | "full") => {
+  const handleTrigger = async (type: "daily" | "weekly" | "full" | "indices") => {
     if (!session?.access_token) return;
     setTriggering(type);
     setTriggerError(null);
@@ -310,6 +310,20 @@ export default function GenesisPage() {
               <Play className="mr-2 h-4 w-4" />
             )}
             Run Full
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleTrigger("indices")}
+            disabled={!!triggering}
+            title="Ingest index metadata + EOD prices only. No ticker/company data."
+          >
+            {triggering === "indices" ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="mr-2 h-4 w-4" />
+            )}
+            Sync Indices
           </Button>
         </div>
       </div>
