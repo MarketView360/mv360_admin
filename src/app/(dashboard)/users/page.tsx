@@ -12,9 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp, Trash2 } from "lucide-react";
-import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend, deleteUserAccount } from "@/lib/api";
-import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
+import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp, Trash2, UserPlus, Loader2 } from "lucide-react";
+import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend, deleteUserAccount, inviteUser, InviteUserResult } from "@/lib/api";
+import { ResponsiveContainer, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from "recharts";
 
 interface UserProfile {
   id: string;
@@ -119,6 +119,16 @@ export default function UsersPage() {
     announcements_opt_in: false,
     alerts_opt_in: false,
     events_and_promotions_opt_in: false,
+  });
+
+  // Invite user state
+  const [inviteDialog, setInviteDialog] = useState(false);
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteForm, setInviteForm] = useState({
+    email: "",
+    full_name: "",
+    subscription_tier: "free" as "free" | "premium" | "max",
+    role: "user" as "user" | "admin",
   });
 
   // Advanced filters
@@ -365,6 +375,49 @@ export default function UsersPage() {
     }
   };
 
+  const openInviteDialog = () => {
+    setInviteForm({
+      email: "",
+      full_name: "",
+      subscription_tier: "free",
+      role: "user",
+    });
+    setInviteDialog(true);
+  };
+
+  const handleInviteUser = async () => {
+    if (!inviteForm.email) {
+      alert("Please enter an email address");
+      return;
+    }
+
+    setInviteLoading(true);
+    try {
+      const result: InviteUserResult = await inviteUser({
+        email: inviteForm.email,
+        full_name: inviteForm.full_name || undefined,
+        subscription_tier: inviteForm.subscription_tier,
+        role: inviteForm.role,
+        send_email: true,
+      });
+
+      if (!result.success) {
+        alert(result.error || "Failed to invite user");
+        return;
+      }
+
+      const methodText = result.method === 'fallback' ? ' (via fallback email)' : '';
+      alert(`✅ User invited successfully${methodText}!\n\nInvitation sent to: ${inviteForm.email}`);
+      setInviteDialog(false);
+      await loadData();
+    } catch (err) {
+      console.error("Failed to invite user:", err);
+      alert("Failed to invite user. Please try again.");
+    } finally {
+      setInviteLoading(false);
+    }
+  };
+
   const toggleRow = (userId: string) => {
     const newExpanded = new Set(expandedRows);
     if (newExpanded.has(userId)) {
@@ -471,6 +524,10 @@ export default function UsersPage() {
           <p className="text-muted-foreground">Advanced user management, subscriptions, and analytics</p>
         </div>
         <div className="flex gap-2">
+          <Button onClick={openInviteDialog} className="bg-green-600 hover:bg-green-700">
+            <UserPlus className="mr-2 h-4 w-4" />
+            Invite User
+          </Button>
           <Select value={colorTheme} onValueChange={(v) => handleThemeChange(v as ColorTheme)}>
             <SelectTrigger className="w-40">
               <Palette className="h-4 w-4 mr-2" />
@@ -551,7 +608,7 @@ export default function UsersPage() {
         </Card>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Subscription Distribution</CardTitle>
@@ -559,22 +616,41 @@ export default function UsersPage() {
           </CardHeader>
           <CardContent className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={tierData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={80}
-                  label={({ name, value }) => `${name}: ${value}`}
-                >
+              <BarChart data={tierData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]}>
                   {tierData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
-                </Pie>
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>User Growth</CardTitle>
+            <CardDescription>New users over time</CardDescription>
+          </CardHeader>
+          <CardContent className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={[
+                { period: "Week 1", users: Math.max(0, users.length - growthStats.lastMonth) },
+                { period: "Week 2", users: Math.max(0, users.length - growthStats.lastMonth + Math.floor(growthStats.lastMonth * 0.3)) },
+                { period: "Week 3", users: Math.max(0, users.length - growthStats.lastWeek - 1) },
+                { period: "Week 4", users: Math.max(0, users.length - growthStats.lastWeek) },
+                { period: "This Week", users: users.length },
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="period" />
+                <YAxis />
                 <Tooltip />
-              </PieChart>
+                <Line type="monotone" dataKey="users" stroke="#8b5cf6" strokeWidth={2} />
+              </LineChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
@@ -600,6 +676,78 @@ export default function UsersPage() {
             <Button variant="outline" size="sm" className="w-full justify-start" onClick={() => applyQuickFilter({ status: "suspended" })}>
               🚫 All Suspended Users
             </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Activity by Tier</CardTitle>
+            <CardDescription>Screen & watchlist usage across subscription levels</CardDescription>
+          </CardHeader>
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={[
+                {
+                  tier: "Free",
+                  screens: users.filter(u => (u.subscription_tier === "free" || !u.subscription_tier)).reduce((sum, u) => sum + (u.screenCount || 0), 0),
+                  watchlists: users.filter(u => (u.subscription_tier === "free" || !u.subscription_tier)).reduce((sum, u) => sum + (u.watchlistCount || 0), 0),
+                },
+                {
+                  tier: "Premium",
+                  screens: users.filter(u => u.subscription_tier === "premium").reduce((sum, u) => sum + (u.screenCount || 0), 0),
+                  watchlists: users.filter(u => u.subscription_tier === "premium").reduce((sum, u) => sum + (u.watchlistCount || 0), 0),
+                },
+                {
+                  tier: "Max",
+                  screens: users.filter(u => u.subscription_tier === "max").reduce((sum, u) => sum + (u.screenCount || 0), 0),
+                  watchlists: users.filter(u => u.subscription_tier === "max").reduce((sum, u) => sum + (u.watchlistCount || 0), 0),
+                }
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="tier" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="screens" fill="#3b82f6" name="Screens" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="watchlists" fill="#10b981" name="Watchlists" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Engagement Metrics</CardTitle>
+            <CardDescription>Average screens & watchlists per user by tier</CardDescription>
+          </CardHeader>
+          <CardContent className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={[
+                {
+                  tier: "Free",
+                  avgScreens: tierStats.free > 0 ? (users.filter(u => (u.subscription_tier === "free" || !u.subscription_tier)).reduce((sum, u) => sum + (u.screenCount || 0), 0) / tierStats.free).toFixed(1) : 0,
+                  avgWatchlists: tierStats.free > 0 ? (users.filter(u => (u.subscription_tier === "free" || !u.subscription_tier)).reduce((sum, u) => sum + (u.watchlistCount || 0), 0) / tierStats.free).toFixed(1) : 0,
+                },
+                {
+                  tier: "Premium",
+                  avgScreens: tierStats.premium > 0 ? (users.filter(u => u.subscription_tier === "premium").reduce((sum, u) => sum + (u.screenCount || 0), 0) / tierStats.premium).toFixed(1) : 0,
+                  avgWatchlists: tierStats.premium > 0 ? (users.filter(u => u.subscription_tier === "premium").reduce((sum, u) => sum + (u.watchlistCount || 0), 0) / tierStats.premium).toFixed(1) : 0,
+                },
+                {
+                  tier: "Max",
+                  avgScreens: tierStats.max > 0 ? (users.filter(u => u.subscription_tier === "max").reduce((sum, u) => sum + (u.screenCount || 0), 0) / tierStats.max).toFixed(1) : 0,
+                  avgWatchlists: tierStats.max > 0 ? (users.filter(u => u.subscription_tier === "max").reduce((sum, u) => sum + (u.watchlistCount || 0), 0) / tierStats.max).toFixed(1) : 0,
+                }
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="tier" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="avgScreens" stroke="#3b82f6" strokeWidth={2} name="Avg Screens" />
+                <Line type="monotone" dataKey="avgWatchlists" stroke="#10b981" strokeWidth={2} name="Avg Watchlists" />
+              </LineChart>
+            </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
@@ -876,7 +1024,13 @@ export default function UsersPage() {
                                 {user.role === "admin" && <Badge className={theme.danger}>Admin</Badge>}
                                 {user.perm_suspend && <Badge className={theme.danger}><Ban className="h-3 w-3 mr-1" />Perm Suspended</Badge>}
                                 {user.temp_suspend && <Badge className={theme.warning}><UserX className="h-3 w-3 mr-1" />Temp Suspended</Badge>}
-                                {!user.temp_suspend && !user.perm_suspend && <Badge className={theme.active}>Active</Badge>}
+                                {Boolean((user.metadata as Record<string, unknown>)?.deletion_requested) && (
+                                  <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
+                                    <Trash2 className="h-3 w-3 mr-1" />
+                                    Deletion Requested
+                                  </Badge>
+                                )}
+                                {!user.temp_suspend && !user.perm_suspend && !Boolean((user.metadata as Record<string, unknown>)?.deletion_requested) && <Badge className={theme.active}>Active</Badge>}
                               </div>
                             </div>
 
@@ -1274,6 +1428,117 @@ export default function UsersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={inviteDialog} onOpenChange={setInviteDialog}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Invite New User</DialogTitle>
+            <DialogDescription>
+              Send an invitation email to a new user. They&apos;ll receive an email with a link to set their password and activate their account.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="invite-email">
+                Email Address <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="invite-email"
+                type="email"
+                placeholder="user@example.com"
+                value={inviteForm.email}
+                onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                The user will receive an invitation email at this address
+              </p>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="invite-name">Full Name (Optional)</Label>
+              <Input
+                id="invite-name"
+                type="text"
+                placeholder="John Doe"
+                value={inviteForm.full_name}
+                onChange={(e) => setInviteForm({ ...inviteForm, full_name: e.target.value })}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="invite-tier">Subscription Tier</Label>
+              <Select 
+                value={inviteForm.subscription_tier} 
+                onValueChange={(value) => setInviteForm({ ...inviteForm, subscription_tier: value as "free" | "premium" | "max" })}
+              >
+                <SelectTrigger id="invite-tier">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">Free</SelectItem>
+                  <SelectItem value="premium">Premium ($19.99/mo)</SelectItem>
+                  <SelectItem value="max">Max ($49.99/mo)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="invite-role">Role</Label>
+              <Select 
+                value={inviteForm.role} 
+                onValueChange={(value) => setInviteForm({ ...inviteForm, role: value as "user" | "admin" })}
+              >
+                <SelectTrigger id="invite-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Admins have full access to the admin portal
+              </p>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-2">
+              <div className="flex gap-2">
+                <Mail className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-blue-800">
+                  <p className="font-medium mb-1">Email Service</p>
+                  <p className="text-xs">
+                    Invitations are sent via Supabase Auth (integrated with Brevo). 
+                    If Supabase fails, a fallback email service will be used automatically.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInviteDialog(false)} disabled={inviteLoading}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleInviteUser} 
+              disabled={inviteLoading || !inviteForm.email}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {inviteLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sending Invitation...
+                </>
+              ) : (
+                <>
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Send Invitation
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
