@@ -844,7 +844,7 @@ async function fetchGenesis<T>(endpoint: string, options: RequestInit = {}): Pro
 }
 
 export async function triggerGenesisPipeline(
-  type: "daily" | "weekly" | "full",
+  type: "daily" | "weekly" | "full" | "indices",
   token: string
 ) {
   return fetchGenesis(`/genesis/${type}`, {
