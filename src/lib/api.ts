@@ -308,6 +308,84 @@ export async function deleteUserAccount(userId: string) {
   }
 }
 
+// ─── MFA Management ──────────────────────────────────────────────────────────
+
+/**
+ * Reset MFA for a user (disable all MFA factors)
+ * Used when user has lost access to their authenticator app
+ */
+export async function resetUserMfa(userId: string): Promise<{ success: boolean; message: string }> {
+  try {
+    // Get all MFA factors for the user
+    const { data: factors, error: listError } = await supabase.auth.admin.mfa.listFactors({
+      userId,
+    });
+
+    if (listError) {
+      console.error("Failed to list MFA factors:", listError);
+      return { success: false, message: "Failed to list MFA factors" };
+    }
+
+    if (!factors?.factors || factors.factors.length === 0) {
+      return { success: false, message: "User has no MFA factors enrolled" };
+    }
+
+    // Delete each MFA factor
+    for (const factor of factors.factors) {
+      const { error: deleteError } = await supabase.auth.admin.mfa.deleteFactor({
+        id: factor.id,
+        userId,
+      });
+
+      if (deleteError) {
+        console.error("Failed to delete MFA factor:", deleteError);
+      }
+    }
+
+    // Delete recovery codes
+    const { error: rcError } = await supabase
+      .from("mfa_recovery_codes")
+      .delete()
+      .eq("user_id", userId);
+
+    if (rcError) {
+      console.error("Failed to delete recovery codes:", rcError);
+    }
+
+    // Log the security event
+    await supabase.from("security_events").insert({
+      user_id: userId,
+      event_type: "admin_mfa_reset",
+      event_data: { action: "mfa_disabled_by_admin" },
+    });
+
+    return { success: true, message: "MFA has been disabled for the user" };
+  } catch (err) {
+    console.error("Error resetting MFA:", err);
+    return { success: false, message: "Failed to reset MFA" };
+  }
+}
+
+/**
+ * Get MFA status for a user
+ */
+export async function getUserMfaStatus(userId: string): Promise<{ enabled: boolean; factorCount: number }> {
+  try {
+    const { data: factors, error } = await supabase.auth.admin.mfa.listFactors({
+      userId,
+    });
+
+    if (error || !factors?.factors) {
+      return { enabled: false, factorCount: 0 };
+    }
+
+    const verifiedFactors = factors.factors.filter((f) => f.status === "verified");
+    return { enabled: verifiedFactors.length > 0, factorCount: verifiedFactors.length };
+  } catch {
+    return { enabled: false, factorCount: 0 };
+  }
+}
+
 // ─── User Invitation ──────────────────────────────────────────────────────────
 
 export interface InviteUserParams {

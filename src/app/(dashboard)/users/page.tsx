@@ -12,8 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp, Trash2, UserPlus, Loader2 } from "lucide-react";
-import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend, deleteUserAccount, inviteUser, InviteUserResult } from "@/lib/api";
+import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp, Trash2, UserPlus, Loader2, Shield, ShieldOff } from "lucide-react";
+import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend, deleteUserAccount, inviteUser, InviteUserResult, resetUserMfa } from "@/lib/api";
 import { ResponsiveContainer, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from "recharts";
 
 interface UserProfile {
@@ -130,6 +130,10 @@ export default function UsersPage() {
     subscription_tier: "free" as "free" | "premium" | "max",
     role: "user" as "user" | "admin",
   });
+
+  // MFA reset state
+  const [mfaResetDialog, setMfaResetDialog] = useState<{ open: boolean; user?: UserProfile }>({ open: false });
+  const [mfaResetLoading, setMfaResetLoading] = useState(false);
 
   // Advanced filters
   const [tierFilter, setTierFilter] = useState<string>("all");
@@ -415,6 +419,26 @@ export default function UsersPage() {
       alert("Failed to invite user. Please try again.");
     } finally {
       setInviteLoading(false);
+    }
+  };
+
+  const handleMfaReset = async () => {
+    if (!mfaResetDialog.user) return;
+
+    setMfaResetLoading(true);
+    try {
+      const result = await resetUserMfa(mfaResetDialog.user.id);
+      if (result.success) {
+        alert(`✅ ${result.message}\n\nUser: ${mfaResetDialog.user.email}`);
+        setMfaResetDialog({ open: false });
+      } else {
+        alert(`❌ ${result.message}`);
+      }
+    } catch (err) {
+      console.error("Failed to reset MFA:", err);
+      alert("Failed to reset MFA. Please try again.");
+    } finally {
+      setMfaResetLoading(false);
     }
   };
 
@@ -1057,6 +1081,15 @@ export default function UsersPage() {
                                   Restore from Perm Suspension
                                 </Button>
                               )}
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                className="border-orange-500 text-orange-600 hover:bg-orange-50"
+                                onClick={() => setMfaResetDialog({ open: true, user })}
+                              >
+                                <ShieldOff className="h-3 w-3 mr-1" />
+                                Reset MFA
+                              </Button>
                               <Button variant="destructive" size="sm" onClick={() => openDeleteDialog(user)}>
                                 <Trash2 className="h-3 w-3 mr-1" />
                                 Delete User
@@ -1539,6 +1572,55 @@ export default function UsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* MFA Reset Dialog */}
+      <AlertDialog open={mfaResetDialog.open} onOpenChange={(open) => setMfaResetDialog({ open })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ShieldOff className="h-5 w-5 text-orange-500" />
+              Reset Two-Factor Authentication
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>
+                You are about to disable all MFA factors for:{" "}
+                <span className="font-semibold text-foreground">
+                  {mfaResetDialog.user?.email}
+                </span>
+              </p>
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+                <p className="text-sm text-orange-800">
+                  <strong>Warning:</strong> This will permanently delete all authenticator apps and recovery codes 
+                  associated with this user. The user will need to set up MFA again if they want to re-enable it.
+                </p>
+              </div>
+              <p className="text-sm">
+                Use this feature when a user has lost access to their authenticator app and recovery codes.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={mfaResetLoading}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              onClick={handleMfaReset}
+              disabled={mfaResetLoading}
+            >
+              {mfaResetLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resetting MFA...
+                </>
+              ) : (
+                <>
+                  <ShieldOff className="mr-2 h-4 w-4" />
+                  Reset MFA
+                </>
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
