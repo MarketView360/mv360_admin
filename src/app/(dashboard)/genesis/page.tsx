@@ -14,7 +14,11 @@ import {
   clearGenesisFailedJobs,
   fetchGenesisAlertsConfig,
   setGenesisAlertsConfig,
-  testGenesisAlerts
+  testGenesisAlerts,
+  triggerEventsIngest,
+  type EventIngestType,
+  type EventIngestResult,
+  triggerCalendarIngestion
 } from "@/lib/api";
 import {
   Card,
@@ -50,8 +54,16 @@ import {
   Bell,
   BellRing,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  Calendar,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface SyncLog {
   id: string;
@@ -163,12 +175,16 @@ export default function GenesisPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleTrigger = async (type: "daily" | "weekly" | "full" | "indices") => {
+  const handleTrigger = async (type: "daily" | "weekly" | "full" | "indices" | "calendar") => {
     if (!session?.access_token) return;
     setTriggering(type);
     setTriggerError(null);
     try {
-      await triggerGenesisPipeline(type, session.access_token);
+      if (type === "calendar") {
+        await triggerCalendarIngestion();
+      } else {
+        await triggerGenesisPipeline(type, session.access_token);
+      }
       await loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -239,6 +255,31 @@ export default function GenesisPage() {
       await loadData();
     } catch (err) {
       console.error("Clear failed:", err);
+    }
+  };
+
+  const [eventsFrom, setEventsFrom] = useState(() => new Date().toISOString().split("T")[0]);
+  const [eventsTo, setEventsTo] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().split("T")[0];
+  });
+  const [eventsType, setEventsType] = useState<EventIngestType>("all");
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsResult, setEventsResult] = useState<EventIngestResult | null>(null);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+
+  const handleEventsIngest = async () => {
+    setEventsLoading(true);
+    setEventsError(null);
+    setEventsResult(null);
+    try {
+      const result = await triggerEventsIngest(eventsFrom, eventsTo, eventsType);
+      setEventsResult(result);
+    } catch (err: unknown) {
+      setEventsError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEventsLoading(false);
     }
   };
 
@@ -324,6 +365,21 @@ export default function GenesisPage() {
               <Play className="mr-2 h-4 w-4" />
             )}
             Sync Indices
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-blue-500 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950"
+            onClick={() => handleTrigger("calendar")}
+            disabled={!!triggering}
+            title="Sync Corporate Events (Earnings, Dividends, IPOs, Splits)"
+          >
+            {triggering === "calendar" ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Calendar className="mr-2 h-4 w-4" />
+            )}
+            Sync Events
           </Button>
         </div>
       </div>
@@ -688,6 +744,113 @@ export default function GenesisPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <CardTitle>Events Ingest</CardTitle>
+            <CardDescription>Ingest earnings, dividends, splits and IPOs from EODHD</CardDescription>
+          </div>
+          <Calendar className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="events-from">From</Label>
+              <Input
+                id="events-from"
+                type="date"
+                value={eventsFrom}
+                onChange={(e) => setEventsFrom(e.target.value)}
+                disabled={eventsLoading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="events-to">To</Label>
+              <Input
+                id="events-to"
+                type="date"
+                value={eventsTo}
+                onChange={(e) => setEventsTo(e.target.value)}
+                disabled={eventsLoading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Event Type</Label>
+              <Select
+                value={eventsType}
+                onValueChange={(v) => setEventsType(v as EventIngestType)}
+                disabled={eventsLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="earnings">Earnings</SelectItem>
+                  <SelectItem value="dividend">Dividends</SelectItem>
+                  <SelectItem value="split">Splits</SelectItem>
+                  <SelectItem value="ipo">IPOs</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <Button onClick={handleEventsIngest} disabled={eventsLoading || !eventsFrom || !eventsTo}>
+            {eventsLoading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="mr-2 h-4 w-4" />
+            )}
+            {eventsLoading ? "Ingesting…" : "Run Ingest"}
+          </Button>
+
+          {eventsError && (
+            <div className="flex items-center justify-between rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+              <span>{eventsError}</span>
+              <button onClick={() => setEventsError(null)} className="ml-4 text-destructive/70 hover:text-destructive">✕</button>
+            </div>
+          )}
+
+          {eventsResult && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 px-4 py-3 text-sm space-y-1">
+              <p className="font-medium text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4" />
+                Ingest completed
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+                {eventsResult.inserted != null && (
+                  <div className="rounded bg-emerald-100 dark:bg-emerald-900/40 px-3 py-1.5 text-center">
+                    <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{eventsResult.inserted}</div>
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400">Inserted</div>
+                  </div>
+                )}
+                {eventsResult.updated != null && (
+                  <div className="rounded bg-blue-100 dark:bg-blue-900/40 px-3 py-1.5 text-center">
+                    <div className="text-lg font-bold text-blue-700 dark:text-blue-300">{eventsResult.updated}</div>
+                    <div className="text-xs text-blue-600 dark:text-blue-400">Updated</div>
+                  </div>
+                )}
+                {eventsResult.skipped != null && (
+                  <div className="rounded bg-muted px-3 py-1.5 text-center">
+                    <div className="text-lg font-bold">{eventsResult.skipped}</div>
+                    <div className="text-xs text-muted-foreground">Skipped</div>
+                  </div>
+                )}
+                {eventsResult.errors != null && (
+                  <div className="rounded bg-destructive/10 px-3 py-1.5 text-center">
+                    <div className={`text-lg font-bold ${(eventsResult.errors ?? 0) > 0 ? "text-destructive" : ""}`}>{eventsResult.errors}</div>
+                    <div className="text-xs text-muted-foreground">Errors</div>
+                  </div>
+                )}
+              </div>
+              {eventsResult.message && (
+                <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">{eventsResult.message}</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
