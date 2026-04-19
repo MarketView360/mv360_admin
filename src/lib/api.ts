@@ -1083,6 +1083,56 @@ export async function triggerEventsIngest(
   return res.json();
 }
 
+// ─── Custom Ingest ─────────────────────────────────────────────────────────────
+
+export type CustomIngestComponent =
+  | "prices"
+  | "fundamentals"
+  | "news"
+  | "dividends"
+  | "splits"
+  | "indices"
+  | "calendar";
+
+export interface CustomIngestResult {
+  pipeline: string;
+  from: string;
+  to: string;
+  components: string[];
+  ticker?: string;
+  status: string;
+  [key: string]: unknown;
+}
+
+export async function triggerCustomIngest(
+  from: string,
+  to: string,
+  components: CustomIngestComponent[],
+  token: string,
+  ticker?: string,
+): Promise<CustomIngestResult> {
+  const body: Record<string, unknown> = { from, to, components };
+  if (ticker) body.ticker = ticker;
+
+  const res = await fetch(`${GENESIS_URL}/genesis/custom`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Pipeline-Secret": process.env.NEXT_PUBLIC_PIPELINE_SECRET || "dev-pipeline-secret",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+
+  const json = await res.json();
+  return (json.data ?? json) as CustomIngestResult;
+}
+
 // ─── Redis Logs ────────────────────────────────────────────────────────────────
 
 export interface RedisLogEntry {
