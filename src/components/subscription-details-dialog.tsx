@@ -97,7 +97,7 @@ export function SubscriptionDetailsDialog({
     }
   };
 
-  const formatDate = (dateStr: string | null) => {
+  const formatDate = (dateStr: string | null | undefined) => {
     if (!dateStr) return "N/A";
     return new Date(dateStr).toLocaleDateString("en-IN", {
       year: "numeric",
@@ -106,7 +106,7 @@ export function SubscriptionDetailsDialog({
     });
   };
 
-  const formatAmount = (amount: number | null) => {
+  const formatAmount = (amount: number | null | undefined) => {
     if (!amount) return "₹0";
     return `₹${Number(amount).toLocaleString("en-IN")}`;
   };
@@ -173,7 +173,7 @@ export function SubscriptionDetailsDialog({
                         <div className="text-xs mt-1">
                           {(() => {
                             const days = getDaysRemaining(details.current_period_end!);
-                            return days > 0 ? `${days} days remaining` : "Period ended";
+                            return days !== null && days > 0 ? `${days} days remaining` : "Period ended";
                           })()}
                         </div>
                       )}
