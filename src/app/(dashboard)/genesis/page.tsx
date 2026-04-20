@@ -14,7 +14,14 @@ import {
   clearGenesisFailedJobs,
   fetchGenesisAlertsConfig,
   setGenesisAlertsConfig,
-  testGenesisAlerts
+  testGenesisAlerts,
+  triggerEventsIngest,
+  triggerCustomIngest,
+  type EventIngestType,
+  type EventIngestResult,
+  type CustomIngestComponent,
+  type CustomIngestResult,
+  triggerCalendarIngestion
 } from "@/lib/api";
 import {
   Card,
@@ -50,8 +57,18 @@ import {
   Bell,
   BellRing,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  ChevronUp,
+  Calendar,
+  Settings2,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface SyncLog {
   id: string;
@@ -163,12 +180,16 @@ export default function GenesisPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleTrigger = async (type: "daily" | "weekly" | "full" | "indices") => {
+  const handleTrigger = async (type: "full" | "indices" | "calendar") => {
     if (!session?.access_token) return;
     setTriggering(type);
     setTriggerError(null);
     try {
-      await triggerGenesisPipeline(type, session.access_token);
+      if (type === "calendar") {
+        await triggerCalendarIngestion();
+      } else {
+        await triggerGenesisPipeline(type, session.access_token);
+      }
       await loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -185,6 +206,56 @@ export default function GenesisPage() {
 
   const [webhookInput, setWebhookInput] = useState("");
   const [updatingAlerts, setUpdatingAlerts] = useState(false);
+
+  // ─── Custom Ingest State ──────────────────────────────────────────────────
+  const ALL_COMPONENTS: { id: CustomIngestComponent; label: string; description: string }[] = [
+    { id: "prices",       label: "Prices",        description: "EOD price data (OHLCV + technicals)" },
+    { id: "fundamentals", label: "Fundamentals",   description: "Company info, metrics, financials, analyst ratings" },
+    { id: "news",         label: "News",           description: "Latest news articles with sentiment" },
+    { id: "dividends",    label: "Dividends",      description: "Full dividend history" },
+    { id: "splits",       label: "Splits",         description: "Stock split history" },
+    { id: "indices",      label: "Indices",        description: "Index metadata + constituent prices" },
+    { id: "calendar",     label: "Calendar Events",description: "Earnings, dividends, IPOs, splits calendar (uses From → To window)" },
+  ];
+
+  const [customFrom, setCustomFrom] = useState(() => new Date().toISOString().split("T")[0]);
+  const [customTo, setCustomTo] = useState(() => new Date().toISOString().split("T")[0]);
+  const [customComponents, setCustomComponents] = useState<Set<CustomIngestComponent>>(new Set(["prices", "news"]));
+  const [customTicker, setCustomTicker] = useState("");
+  const [customLoading, setCustomLoading] = useState(false);
+  const [customResult, setCustomResult] = useState<CustomIngestResult | null>(null);
+  const [customError, setCustomError] = useState<string | null>(null);
+  const [customPanelOpen, setCustomPanelOpen] = useState(true);
+
+  const toggleComponent = (id: CustomIngestComponent) => {
+    setCustomComponents(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const handleCustomIngest = async () => {
+    if (!session?.access_token || customComponents.size === 0) return;
+    setCustomLoading(true);
+    setCustomError(null);
+    setCustomResult(null);
+    try {
+      const result = await triggerCustomIngest(
+        customFrom,
+        customTo,
+        Array.from(customComponents),
+        session.access_token,
+        customTicker.trim() || undefined,
+      );
+      setCustomResult(result);
+      setTimeout(() => loadData(), 1500); // refresh logs after short delay
+    } catch (err: unknown) {
+      setCustomError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCustomLoading(false);
+    }
+  };
 
   const handleUpdateAlerts = async () => {
     if (!session?.access_token) return;
@@ -242,6 +313,31 @@ export default function GenesisPage() {
     }
   };
 
+  const [eventsFrom, setEventsFrom] = useState(() => new Date().toISOString().split("T")[0]);
+  const [eventsTo, setEventsTo] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().split("T")[0];
+  });
+  const [eventsType, setEventsType] = useState<EventIngestType>("all");
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [eventsResult, setEventsResult] = useState<EventIngestResult | null>(null);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+
+  const handleEventsIngest = async () => {
+    setEventsLoading(true);
+    setEventsError(null);
+    setEventsResult(null);
+    try {
+      const result = await triggerEventsIngest(eventsFrom, eventsTo, eventsType);
+      setEventsResult(result);
+    } catch (err: unknown) {
+      setEventsError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEventsLoading(false);
+    }
+  };
+
   const totalRecords = logs.reduce(
     (sum, l) => sum + (l.records_processed ?? 0),
     0
@@ -263,7 +359,7 @@ export default function GenesisPage() {
             Pipeline monitoring, sync logs & manual triggers
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
@@ -272,31 +368,6 @@ export default function GenesisPage() {
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Refresh
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => handleTrigger("daily")}
-            disabled={!!triggering}
-          >
-            {triggering === "daily" ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="mr-2 h-4 w-4" />
-            )}
-            Run Daily
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => handleTrigger("weekly")}
-            disabled={!!triggering}
-          >
-            {triggering === "weekly" ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="mr-2 h-4 w-4" />
-            )}
-            Run Weekly
           </Button>
           <Button
             size="sm"
@@ -325,6 +396,21 @@ export default function GenesisPage() {
             )}
             Sync Indices
           </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-blue-500 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950"
+            onClick={() => handleTrigger("calendar")}
+            disabled={!!triggering}
+            title="Sync Corporate Events (Earnings, Dividends, IPOs, Splits)"
+          >
+            {triggering === "calendar" ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Calendar className="mr-2 h-4 w-4" />
+            )}
+            Sync Events
+          </Button>
         </div>
       </div>
 
@@ -334,6 +420,194 @@ export default function GenesisPage() {
           <button onClick={() => setTriggerError(null)} className="ml-4 text-destructive/70 hover:text-destructive">✕</button>
         </div>
       )}
+
+      {/* ─── Custom Ingest Card ─────────────────────────────────────────── */}
+      <Card className="border-violet-500/30 bg-gradient-to-br from-violet-500/5 to-purple-500/5">
+        <CardHeader
+          className="flex flex-row items-center justify-between pb-3 cursor-pointer select-none"
+          onClick={() => setCustomPanelOpen(v => !v)}
+        >
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-violet-500/10 p-2">
+              <Settings2 className="h-5 w-5 text-violet-500" />
+            </div>
+            <div>
+              <CardTitle className="text-base">Custom Ingest</CardTitle>
+              <CardDescription>
+                Choose a date, data components, and optionally a single ticker
+              </CardDescription>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {customComponents.size > 0 && (
+              <span className="rounded-full bg-violet-500/20 px-2.5 py-0.5 text-xs font-medium text-violet-600 dark:text-violet-400">
+                {customComponents.size} selected
+              </span>
+            )}
+            {customPanelOpen
+              ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          </div>
+        </CardHeader>
+
+        {customPanelOpen && (
+          <CardContent className="space-y-5 pt-0">
+            {/* Date Range + Ticker row */}
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="custom-from">From Date</Label>
+                <Input
+                  id="custom-from"
+                  type="date"
+                  value={customFrom}
+                  onChange={e => {
+                    setCustomFrom(e.target.value);
+                    if (customTo < e.target.value) setCustomTo(e.target.value);
+                  }}
+                  disabled={customLoading}
+                  max={new Date().toISOString().split("T")[0]}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="custom-to">To Date</Label>
+                <Input
+                  id="custom-to"
+                  type="date"
+                  value={customTo}
+                  onChange={e => setCustomTo(e.target.value)}
+                  disabled={customLoading}
+                  min={customFrom}
+                  max={new Date().toISOString().split("T")[0]}
+                />
+                <p className="text-xs text-muted-foreground">Calendar events use this full range</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="custom-ticker">Ticker Filter <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input
+                  id="custom-ticker"
+                  placeholder="e.g. AAPL or AAPL.US"
+                  value={customTicker}
+                  onChange={e => setCustomTicker(e.target.value.toUpperCase())}
+                  disabled={customLoading}
+                />
+                <p className="text-xs text-muted-foreground">Leave blank for all tickers</p>
+              </div>
+            </div>
+
+            {/* Component toggles */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Data Components</Label>
+                <div className="flex gap-2">
+                  <button
+                    className="text-xs text-violet-500 hover:underline"
+                    onClick={() => setCustomComponents(new Set(ALL_COMPONENTS.map(c => c.id)))}
+                  >
+                    Select all
+                  </button>
+                  <span className="text-xs text-muted-foreground">·</span>
+                  <button
+                    className="text-xs text-muted-foreground hover:underline"
+                    onClick={() => setCustomComponents(new Set())}
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {ALL_COMPONENTS.map(comp => {
+                  const active = customComponents.has(comp.id);
+                  return (
+                    <button
+                      key={comp.id}
+                      onClick={() => toggleComponent(comp.id)}
+                      disabled={customLoading}
+                      className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-all ${
+                        active
+                          ? "border-violet-500/60 bg-violet-500/10 text-foreground"
+                          : "border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/40 hover:bg-muted/50"
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    >
+                      <div className={`mt-0.5 h-4 w-4 shrink-0 rounded border flex items-center justify-center ${
+                        active ? "border-violet-500 bg-violet-500" : "border-muted-foreground/40"
+                      }`}>
+                        {active && (
+                          <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 12 12">
+                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        )}
+                      </div>
+                      <div>
+                        <p className={`text-sm font-medium leading-none ${active ? "text-foreground" : ""}`}>{comp.label}</p>
+                        <p className="text-xs text-muted-foreground mt-1 leading-snug">{comp.description}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Action row */}
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={handleCustomIngest}
+                disabled={customLoading || customComponents.size === 0 || !customFrom || !customTo}
+                className="bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                {customLoading ? (
+                  <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Running…</>
+                ) : (
+                  <><Play className="mr-2 h-4 w-4" /> Run Custom Ingest</>
+                )}
+              </Button>
+              {customComponents.size === 0 && (
+                <p className="text-xs text-muted-foreground">Select at least one component</p>
+              )}
+            </div>
+
+            {/* Error */}
+            {customError && (
+              <div className="flex items-center justify-between rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+                <span>{customError}</span>
+                <button onClick={() => setCustomError(null)} className="ml-4 text-destructive/70 hover:text-destructive">✕</button>
+              </div>
+            )}
+
+            {/* Success result */}
+            {customResult && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 px-4 py-3 text-sm space-y-2">
+                <p className="font-medium text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Custom ingest triggered
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="rounded bg-emerald-100 dark:bg-emerald-900/40 px-3 py-1.5">
+                    <div className="text-muted-foreground">From</div>
+                    <div className="font-medium text-foreground">{customResult.from}</div>
+                  </div>
+                  <div className="rounded bg-emerald-100 dark:bg-emerald-900/40 px-3 py-1.5">
+                    <div className="text-muted-foreground">To</div>
+                    <div className="font-medium text-foreground">{customResult.to}</div>
+                  </div>
+                  <div className="rounded bg-emerald-100 dark:bg-emerald-900/40 px-3 py-1.5">
+                    <div className="text-muted-foreground">Components</div>
+                    <div className="font-medium text-foreground">{customResult.components?.join(", ") ?? "—"}</div>
+                  </div>
+                  {customResult.ticker && (
+                    <div className="rounded bg-emerald-100 dark:bg-emerald-900/40 px-3 py-1.5">
+                      <div className="text-muted-foreground">Ticker</div>
+                      <div className="font-medium text-foreground">{customResult.ticker}</div>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                  Pipeline is running in the background — check the sync log below
+                </p>
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -688,6 +962,113 @@ export default function GenesisPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
+          <div>
+            <CardTitle>Events Ingest</CardTitle>
+            <CardDescription>Ingest earnings, dividends, splits and IPOs from EODHD</CardDescription>
+          </div>
+          <Calendar className="h-5 w-5 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="events-from">From</Label>
+              <Input
+                id="events-from"
+                type="date"
+                value={eventsFrom}
+                onChange={(e) => setEventsFrom(e.target.value)}
+                disabled={eventsLoading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="events-to">To</Label>
+              <Input
+                id="events-to"
+                type="date"
+                value={eventsTo}
+                onChange={(e) => setEventsTo(e.target.value)}
+                disabled={eventsLoading}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Event Type</Label>
+              <Select
+                value={eventsType}
+                onValueChange={(v) => setEventsType(v as EventIngestType)}
+                disabled={eventsLoading}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="earnings">Earnings</SelectItem>
+                  <SelectItem value="dividend">Dividends</SelectItem>
+                  <SelectItem value="split">Splits</SelectItem>
+                  <SelectItem value="ipo">IPOs</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <Button onClick={handleEventsIngest} disabled={eventsLoading || !eventsFrom || !eventsTo}>
+            {eventsLoading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="mr-2 h-4 w-4" />
+            )}
+            {eventsLoading ? "Ingesting…" : "Run Ingest"}
+          </Button>
+
+          {eventsError && (
+            <div className="flex items-center justify-between rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+              <span>{eventsError}</span>
+              <button onClick={() => setEventsError(null)} className="ml-4 text-destructive/70 hover:text-destructive">✕</button>
+            </div>
+          )}
+
+          {eventsResult && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30 px-4 py-3 text-sm space-y-1">
+              <p className="font-medium text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4" />
+                Ingest completed
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
+                {eventsResult.inserted != null && (
+                  <div className="rounded bg-emerald-100 dark:bg-emerald-900/40 px-3 py-1.5 text-center">
+                    <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{eventsResult.inserted}</div>
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400">Inserted</div>
+                  </div>
+                )}
+                {eventsResult.updated != null && (
+                  <div className="rounded bg-blue-100 dark:bg-blue-900/40 px-3 py-1.5 text-center">
+                    <div className="text-lg font-bold text-blue-700 dark:text-blue-300">{eventsResult.updated}</div>
+                    <div className="text-xs text-blue-600 dark:text-blue-400">Updated</div>
+                  </div>
+                )}
+                {eventsResult.skipped != null && (
+                  <div className="rounded bg-muted px-3 py-1.5 text-center">
+                    <div className="text-lg font-bold">{eventsResult.skipped}</div>
+                    <div className="text-xs text-muted-foreground">Skipped</div>
+                  </div>
+                )}
+                {eventsResult.errors != null && (
+                  <div className="rounded bg-destructive/10 px-3 py-1.5 text-center">
+                    <div className={`text-lg font-bold ${(eventsResult.errors ?? 0) > 0 ? "text-destructive" : ""}`}>{eventsResult.errors}</div>
+                    <div className="text-xs text-muted-foreground">Errors</div>
+                  </div>
+                )}
+              </div>
+              {eventsResult.message && (
+                <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-1">{eventsResult.message}</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">

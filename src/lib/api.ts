@@ -812,6 +812,11 @@ const GENESIS_URL =
     process.env.NEXT_PUBLIC_API_URL ??
     "http://localhost:4000").replace(/\/$/, ""); // Remove trailing slash
 
+const BACKEND_URL =
+  (process.env.NEXT_PUBLIC_BACKEND_URL ??
+    process.env.NEXT_PUBLIC_API_URL ??
+    "http://localhost:3001").replace(/\/$/, "");
+
 /**
  * Helper to fetch from Genesis API with graceful error handling
  */
@@ -857,6 +862,28 @@ export async function triggerGenesisPipeline(
   });
 }
 
+export async function triggerCalendarIngestion() {
+  const fromDate = new Date().toISOString().split('T')[0];
+  const toDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+  const res = await fetch(`${GENESIS_URL}/genesis/calendar`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Pipeline-Secret": process.env.NEXT_PUBLIC_PIPELINE_SECRET || "dev-pipeline-secret",
+    },
+    body: JSON.stringify({
+      from: fromDate,
+      to: toDate
+    })
+  });
+  
+  if (!res.ok) {
+    throw new Error(`Failed to trigger calendar ingestion: ${res.statusText}`);
+  }
+  
+  return await res.json();
+}
 export async function fetchGenesisStatus(token: string) {
   return fetchGenesis(`/genesis/status`, {
     headers: {
@@ -1016,6 +1043,94 @@ export async function testGenesisAlerts(token: string) {
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret"
     }
   });
+}
+
+// ─── Events Ingest ─────────────────────────────────────────────────────────────
+
+export type EventIngestType = "earnings" | "dividend" | "split" | "ipo" | "all";
+
+export interface EventIngestResult {
+  inserted?: number;
+  updated?: number;
+  skipped?: number;
+  errors?: number;
+  message?: string;
+  [key: string]: unknown;
+}
+
+export async function triggerEventsIngest(
+  from: string,
+  to: string,
+  type?: EventIngestType,
+): Promise<EventIngestResult> {
+  const body: Record<string, string> = { from, to };
+  if (type && type !== "all") body.type = type;
+
+  const res = await fetch(`${GENESIS_URL}/genesis/calendar`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Pipeline-Secret": process.env.NEXT_PUBLIC_PIPELINE_SECRET || "dev-pipeline-secret",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+
+  return res.json();
+}
+
+// ─── Custom Ingest ─────────────────────────────────────────────────────────────
+
+export type CustomIngestComponent =
+  | "prices"
+  | "fundamentals"
+  | "news"
+  | "dividends"
+  | "splits"
+  | "indices"
+  | "calendar";
+
+export interface CustomIngestResult {
+  pipeline: string;
+  from: string;
+  to: string;
+  components: string[];
+  ticker?: string;
+  status: string;
+  [key: string]: unknown;
+}
+
+export async function triggerCustomIngest(
+  from: string,
+  to: string,
+  components: CustomIngestComponent[],
+  token: string,
+  ticker?: string,
+): Promise<CustomIngestResult> {
+  const body: Record<string, unknown> = { from, to, components };
+  if (ticker) body.ticker = ticker;
+
+  const res = await fetch(`${GENESIS_URL}/genesis/custom`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Pipeline-Secret": process.env.NEXT_PUBLIC_PIPELINE_SECRET || "dev-pipeline-secret",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `HTTP ${res.status}`);
+  }
+
+  const json = await res.json();
+  return (json.data ?? json) as CustomIngestResult;
 }
 
 // ─── Redis Logs ────────────────────────────────────────────────────────────────
