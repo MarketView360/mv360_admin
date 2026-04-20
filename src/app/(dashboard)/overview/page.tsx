@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -26,7 +26,8 @@ import {
   Database,
   RefreshCw,
 } from "lucide-react";
-import { fetchOverviewStats } from "@/lib/api";
+import { useOverviewStats, queryKeys } from "@/lib/hooks/use-admin-queries";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface SyncLog {
   id: string;
@@ -86,22 +87,16 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function OverviewPage() {
-  const [stats, setStats] = useState<OverviewStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: stats, isLoading: loading, refetch } = useOverviewStats();
+  const queryClient = useQueryClient();
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchOverviewStats();
-      setStats(data);
-    } finally {
-      setLoading(false);
-    }
+  // Memoized derived data for better performance
+  const recentSyncs = useMemo(() => stats?.recentSyncs ?? [], [stats?.recentSyncs]);
+
+  const handleRefresh = () => {
+    // Invalidate and refetch for fresh data
+    queryClient.invalidateQueries({ queryKey: queryKeys.overview });
   };
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   const S = () => <Skeleton className="h-8 w-20" />;
 
@@ -112,7 +107,7 @@ export default function OverviewPage() {
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground">MarketView360 system overview</p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
+        <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading}>
           <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Refresh
         </Button>
@@ -261,11 +256,11 @@ export default function OverviewPage() {
               <div className="space-y-2">
                 {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
               </div>
-            ) : (stats?.recentSyncs.length ?? 0) === 0 ? (
+            ) : recentSyncs.length === 0 ? (
               <p className="text-sm text-muted-foreground">No sync logs found.</p>
             ) : (
               <div className="space-y-2">
-                {stats?.recentSyncs.map((sync) => (
+                {recentSyncs.map((sync) => (
                   <div
                     key={sync.id}
                     className="flex items-center justify-between rounded-lg border border-border p-3"

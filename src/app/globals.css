@@ -134,7 +134,7 @@
       transform: translateX(-50%);
     }
   }
-  
+
   @keyframes marquee-slow {
     0% {
       transform: translateX(0%);
@@ -143,12 +143,191 @@
       transform: translateX(-50%);
     }
   }
-  
+
   .animate-marquee {
     animation: marquee 30s linear infinite;
   }
-  
+
   .animate-marquee-slow {
     animation: marquee-slow 60s linear infinite;
+  }
+
+  /* ─── Performance Optimizations ─────────────────────────────────────────── */
+
+  /* GPU acceleration for animated elements */
+  .gpu-accelerate {
+    transform: translateZ(0);
+    will-change: transform;
+    backface-visibility: hidden;
+  }
+
+  /* Smooth scrolling with GPU acceleration */
+  .smooth-scroll {
+    scroll-behavior: smooth;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Prevent layout thrashing for frequently updated content */
+  .contain-layout {
+    contain: layout;
+  }
+
+  /* Contain paint for isolated components (charts, tables) */
+  .contain-paint {
+    contain: paint;
+  }
+
+  /* Full containment for optimal performance */
+  .contain-strict {
+    contain: strict;
+  }
+
+  /* Reduce paint area for large lists/tables */
+  .contain-content {
+    contain: content;
+  }
+
+  /* Optimized table rendering */
+  .table-fixed {
+    table-layout: fixed;
+  }
+
+  /* Prevent unnecessary repaints on hover states */
+  .hover-stable {
+    isolation: isolate;
+  }
+
+  /* Fast fade animations with GPU */
+  .fade-fast {
+    transition: opacity 150ms ease-out;
+    will-change: opacity;
+  }
+
+  /* Smooth scale animations */
+  .scale-smooth {
+    transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+    transform-origin: center;
+  }
+
+  /* Loading shimmer effect */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      oklch(1 0 0 / 5%) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  /* Dark mode shimmer */
+  .dark .shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      oklch(1 0 0 / 8%) 50%,
+      transparent 100%
+    );
+  }
+
+  /* Optimized skeleton pulse */
+  .skeleton-pulse {
+    animation: skeleton-pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes skeleton-pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  /* Staggered animation helper */
+  .stagger-animation > * {
+    animation-fill-mode: both;
+    animation-duration: 300ms;
+  }
+
+  .stagger-animation > *:nth-child(1) { animation-delay: 0ms; }
+  .stagger-animation > *:nth-child(2) { animation-delay: 50ms; }
+  .stagger-animation > *:nth-child(3) { animation-delay: 100ms; }
+  .stagger-animation > *:nth-child(4) { animation-delay: 150ms; }
+  .stagger-animation > *:nth-child(5) { animation-delay: 200ms; }
+  .stagger-animation > *:nth-child(6) { animation-delay: 250ms; }
+  .stagger-animation > *:nth-child(7) { animation-delay: 300ms; }
+  .stagger-animation > *:nth-child(8) { animation-delay: 350ms; }
+
+  /* Virtual scroll container optimization */
+  .virtual-scroll-container {
+    position: relative;
+    overflow-y: auto;
+    contain: strict;
+    will-change: scroll-position;
+  }
+
+  /* Chart container optimization */
+  .chart-container {
+    position: relative;
+    contain: layout paint;
+    min-height: 200px;
+  }
+
+  /* Card hover optimization */
+  .card-hover-optimize {
+    transition: box-shadow 200ms ease-out, transform 200ms ease-out;
+    will-change: box-shadow, transform;
+  }
+
+  /* Scrollbar styling for performance */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: oklch(0.708 0.02 260) transparent;
+  }
+
+  .dark .scrollbar-thin {
+    scrollbar-color: oklch(0.556 0.02 260) transparent;
+  }
+
+  /* Prevent text selection on interactive elements */
+  .no-select {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* Optimized focus styles */
+  .focus-visible-optimize:focus-visible {
+    outline: 2px solid oklch(0.60 0.20 260);
+    outline-offset: 2px;
+    transition: outline 150ms ease-out;
+  }
+
+  /* Reduce motion for accessibility */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-marquee,
+    .animate-marquee-slow,
+    .shimmer,
+    .skeleton-pulse {
+      animation: none;
+    }
+
+    .fade-fast,
+    .scale-smooth,
+    .card-hover-optimize {
+      transition: none;
+    }
   }
 }

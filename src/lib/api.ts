@@ -3,10 +3,10 @@ import { supabase } from "@/lib/supabase";
 // ─── Overview Stats ───────────────────────────────────────────────────────────
 /**
  * Fetch overview stats using optimized RPC function
- * Falls back to individual queries if RPC is not available
+ * Single query instead of 9 parallel queries
  */
 export async function fetchOverviewStats() {
-  // Try RPC first (much faster - single query)
+  // Try optimized RPC first
   const { data: rpcData, error: rpcError } = await supabase.rpc('admin_get_overview_stats');
 
   if (!rpcError && rpcData && rpcData.length > 0) {
@@ -177,10 +177,40 @@ export async function fetchSecurityEventsSummary(days = 30) {
 // ─── Users (with settings, screens, watchlist counts) ────────────────────────
 /**
  * Fetch all users with aggregated details
- * Uses optimized RPC function if available, falls back to individual queries
+ * Uses optimized RPC function for single query with counts
  */
 export async function fetchUsers() {
-  // Fallback to individual queries since RPC may not exist or may have schema mismatch
+  // Try optimized RPC first (single query with all counts)
+  const { data: rpcData, error: rpcError } = await supabase.rpc('admin_get_users_with_counts');
+
+  if (!rpcError && rpcData) {
+    return rpcData.map((u: any) => ({
+      id: u.id,
+      email: u.email,
+      display_name: u.display_name,
+      full_name: u.full_name,
+      subscription_tier: u.subscription_tier,
+      role: u.role,
+      created_at: u.created_at,
+      updated_at: u.updated_at,
+      onboarded_at: u.onboarded_at,
+      billing_customer_id: u.billing_customer_id,
+      newsletter_opt_in: u.newsletter_opt_in ?? false,
+      announcements_opt_in: u.announcements_opt_in ?? false,
+      alerts_opt_in: u.alerts_opt_in ?? false,
+      events_and_promotions_opt_in: u.events_and_promotions_opt_in ?? false,
+      temp_suspend: u.temp_suspend ?? false,
+      perm_suspend: u.perm_suspend ?? false,
+      metadata: u.metadata,
+      preferences: u.preferences,
+      settings: null,
+      screenCount: Number(u.screen_count) ?? 0,
+      watchlistCount: Number(u.watchlist_count) ?? 0,
+      lastActivity: u.last_activity,
+    }));
+  }
+
+  // Fallback to individual queries (slower)
   const [profiles, savedScreens, watchlistsRes] = await Promise.all([
     supabase
       .from("user_profiles")
@@ -1635,5 +1665,203 @@ export async function runDataQualityValidation(token: string) {
       "X-Admin-Secret": process.env.NEXT_PUBLIC_ADMIN_SECRET || "dev-admin-secret",
     },
   });
+}
+
+// ─── Subscription & Payment Management ────────────────────────────────────────────
+
+export interface UserSubscriptionDetails {
+  user_id: string;
+  email: string;
+  subscription_tier: string;
+  razorpay_customer_id: string | null;
+  subscription_id: string | null;
+  razorpay_subscription_id: string | null;
+  plan_name: string | null;
+  plan_tier: string | null;
+  billing_period: string | null;
+  amount_inr: number | null;
+  subscription_status: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  canceled_at: string | null;
+  trial_ends_at: string | null;
+  total_payments: number;
+  total_paid_inr: number;
+  last_payment_at: string | null;
+  last_payment_status: string | null;
+  last_payment_amount: number | null;
+  payment_method_type: string | null;
+  card_last4: string | null;
+  card_brand: string | null;
+}
+
+export interface UserPayment {
+  id: string;
+  user_id: string;
+  subscription_id: string | null;
+  razorpay_payment_id: string;
+  razorpay_order_id: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  payment_method: string | null;
+  card_last4: string | null;
+  card_brand: string | null;
+  invoice_url: string | null;
+  created_at: string;
+  failure_reason: string | null;
+}
+
+/**
+ * Fetch subscription and payment details for a specific user
+ */
+export async function fetchUserSubscriptionDetails(userId: string): Promise<UserSubscriptionDetails | null> {
+  const { data, error } = await supabase.rpc('admin_get_user_subscription_details', { p_user_id: userId });
+
+  if (error) {
+    console.error('Error fetching user subscription details:', error);
+    // Fallback: manually query tables
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('id, email, subscription_tier, razorpay_customer_id')
+      .eq('id', userId)
+      .single();
+
+    if (!profile) return null;
+
+    const { data: subscriptions } = await supabase
+      .from('subscriptions')
+      .select('id, razorpay_subscription_id, status, current_period_start, current_period_end, canceled_at, trial_ends_at, plan_id')
+      .eq('user_id', userId)
+      .in('status', ['active', 'paused', 'pending'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    const { data: payments } = await supabase
+      .from('payments')
+      .select('id, amount, status, created_at')
+      .eq('user_id', userId)
+      .eq('status', 'captured')
+      .order('created_at', { ascending: false });
+
+    const activeSub = subscriptions?.[0];
+    let plan = null;
+    if (activeSub?.plan_id) {
+      const { data: planData } = await supabase
+        .from('subscription_plans')
+        .select('name, tier, billing_period, amount_inr')
+        .eq('id', activeSub.plan_id)
+        .single();
+      plan = planData;
+    }
+
+    return {
+      user_id: profile.id,
+      email: profile.email,
+      subscription_tier: profile.subscription_tier || 'free',
+      razorpay_customer_id: profile.razorpay_customer_id,
+      subscription_id: activeSub?.id || null,
+      razorpay_subscription_id: activeSub?.razorpay_subscription_id || null,
+      plan_name: plan?.name || null,
+      plan_tier: plan?.tier || null,
+      billing_period: plan?.billing_period || null,
+      amount_inr: plan?.amount_inr || null,
+      subscription_status: activeSub?.status || null,
+      current_period_start: activeSub?.current_period_start || null,
+      current_period_end: activeSub?.current_period_end || null,
+      canceled_at: activeSub?.canceled_at || null,
+      trial_ends_at: activeSub?.trial_ends_at || null,
+      total_payments: payments?.length || 0,
+      total_paid_inr: payments?.reduce((sum, p) => sum + Number(p.amount), 0) || 0,
+      last_payment_at: payments?.[0]?.created_at || null,
+      last_payment_status: payments?.[0]?.status || null,
+      last_payment_amount: payments?.[0]?.amount || null,
+      payment_method_type: null,
+      card_last4: null,
+      card_brand: null,
+    };
+  }
+
+  return data?.[0] || null;
+}
+
+/**
+ * Fetch all payments for a user
+ */
+export async function fetchUserPayments(userId: string): Promise<UserPayment[]> {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('id, user_id, subscription_id, razorpay_payment_id, razorpay_order_id, amount, currency, status, payment_method, card_last4, card_brand, invoice_url, created_at, failure_reason')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching user payments:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+/**
+ * Fetch all subscription plans
+ */
+export async function fetchSubscriptionPlans() {
+  const { data, error } = await supabase
+    .from('subscription_plans')
+    .select('id, name, tier, billing_period, amount_usd, amount_inr, razorpay_plan_id, features, is_active')
+    .eq('is_active', true)
+    .order('amount_inr', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching subscription plans:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+/**
+ * Get subscription statistics for dashboard
+ */
+export async function fetchSubscriptionStats() {
+  const { data: plans } = await supabase
+    .from('subscription_plans')
+    .select('id, tier, amount_inr')
+    .eq('is_active', true);
+
+  const { data: activeSubs } = await supabase
+    .from('subscriptions')
+    .select('plan_id, status')
+    .eq('status', 'active');
+
+  const { count: totalActive } = await supabase
+    .from('subscriptions')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'active');
+
+  const { data: paymentsThisMonth } = await supabase
+    .from('payments')
+    .select('amount')
+    .eq('status', 'captured')
+    .gte('created_at', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString());
+
+  const mrr = paymentsThisMonth?.reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+
+  // Count by tier
+  const tierCounts: Record<string, number> = { free: 0, premium: 0, max: 0 };
+  activeSubs?.forEach(sub => {
+    const plan = plans?.find(p => p.id === sub.plan_id);
+    if (plan) {
+      tierCounts[plan.tier] = (tierCounts[plan.tier] || 0) + 1;
+    }
+  });
+
+  return {
+    totalActiveSubscriptions: totalActive || 0,
+    mrr: mrr,
+    tierCounts,
+    plans: plans || [],
+  };
 }
 

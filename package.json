@@ -11,6 +11,7 @@
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
+    "@tanstack/react-query": "^5.99.2",
     "@types/nodemailer": "^7.0.11",
     "@uiw/react-md-editor": "^4.0.11",
     "@vercel/analytics": "^2.0.0",

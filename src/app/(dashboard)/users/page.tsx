@@ -12,8 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp, Trash2, UserPlus, Loader2, Shield, ShieldOff } from "lucide-react";
+import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp, Trash2, UserPlus, Loader2, Shield, ShieldOff, CreditCard } from "lucide-react";
 import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend, deleteUserAccount, inviteUser, InviteUserResult, resetUserMfa } from "@/lib/api";
+import { SubscriptionDetailsDialog } from "@/components/subscription-details-dialog";
 import { ResponsiveContainer, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from "recharts";
 
 interface UserProfile {
@@ -44,7 +45,8 @@ interface UserProfile {
   lastActivity: string | null;
 }
 
-const TIER_PRICES = { free: 0, premium: 19.99, max: 49.99 };
+const TIER_PRICES_INR = { free: 0, premium: 999, max: 4999 }; // INR monthly prices
+const TIER_PRICES_USD = { free: 0, premium: 9.90, max: 49.99 }; // USD equivalent for display
 const TIER_COLORS = { free: "#94a3b8", premium: "#3b82f6", max: "#8b5cf6" };
 
 type SortField = "name" | "email" | "tier" | "created" | "lastActivity" | "payment";
@@ -134,6 +136,9 @@ export default function UsersPage() {
   // MFA reset state
   const [mfaResetDialog, setMfaResetDialog] = useState<{ open: boolean; user?: UserProfile }>({ open: false });
   const [mfaResetLoading, setMfaResetLoading] = useState(false);
+
+  // Subscription details dialog state
+  const [subscriptionDialog, setSubscriptionDialog] = useState<{ open: boolean; userId: string; userEmail: string }>({ open: false, userId: "", userEmail: "" });
 
   // Advanced filters
   const [tierFilter, setTierFilter] = useState<string>("all");
@@ -255,8 +260,8 @@ export default function UsersPage() {
           comparison = aTime - bTime;
           break;
         case "payment":
-          const aPrice = TIER_PRICES[a.subscription_tier as keyof typeof TIER_PRICES] || 0;
-          const bPrice = TIER_PRICES[b.subscription_tier as keyof typeof TIER_PRICES] || 0;
+          const aPrice = TIER_PRICES_INR[a.subscription_tier as keyof typeof TIER_PRICES_INR] || 0;
+          const bPrice = TIER_PRICES_INR[b.subscription_tier as keyof typeof TIER_PRICES_INR] || 0;
           comparison = aPrice - bPrice;
           break;
       }
@@ -613,7 +618,7 @@ export default function UsersPage() {
           <CardContent>
             <div className="text-2xl font-bold">{tierStats.premium + tierStats.max}</div>
             <p className="text-xs text-muted-foreground">
-              ${((tierStats.premium * TIER_PRICES.premium) + (tierStats.max * TIER_PRICES.max)).toFixed(0)}/mo MRR
+              ₹{((tierStats.premium * TIER_PRICES_INR.premium) + (tierStats.max * TIER_PRICES_INR.max)).toLocaleString('en-IN')}/mo MRR
             </p>
           </CardContent>
         </Card>
@@ -925,7 +930,7 @@ export default function UsersPage() {
                         <TableCell>
                           {(user.subscription_tier && user.subscription_tier !== "free") ? (
                             <span className="text-sm font-medium">
-                              ${TIER_PRICES[user.subscription_tier as keyof typeof TIER_PRICES]}/mo
+                              ₹{TIER_PRICES_INR[user.subscription_tier as keyof typeof TIER_PRICES_INR]}/mo
                             </span>
                           ) : (
                             <span className="text-xs text-muted-foreground">-</span>
@@ -1007,13 +1012,22 @@ export default function UsersPage() {
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Monthly: </span>
-                                    ${TIER_PRICES[user.subscription_tier as keyof typeof TIER_PRICES]}/mo
+                                    ₹{TIER_PRICES_INR[user.subscription_tier as keyof typeof TIER_PRICES_INR]}/mo
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Tier: </span>
                                     {user.subscription_tier.toUpperCase()}
                                   </div>
                                 </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="mt-2"
+                                  onClick={() => setSubscriptionDialog({ open: true, userId: user.id, userEmail: user.email || "" })}
+                                >
+                                  <CreditCard className="h-3 w-3 mr-1" />
+                                  View Payment Details
+                                </Button>
                               </div>
                             )}
 
@@ -1135,8 +1149,8 @@ export default function UsersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="free">Free</SelectItem>
-                  <SelectItem value="premium">Premium ($19.99/mo)</SelectItem>
-                  <SelectItem value="max">Max ($49.99/mo)</SelectItem>
+                  <SelectItem value="premium">Premium (₹999/mo)</SelectItem>
+                  <SelectItem value="max">Max (₹4,999/mo)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1510,8 +1524,8 @@ export default function UsersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="free">Free</SelectItem>
-                  <SelectItem value="premium">Premium ($19.99/mo)</SelectItem>
-                  <SelectItem value="max">Max ($49.99/mo)</SelectItem>
+                  <SelectItem value="premium">Premium (₹999/mo)</SelectItem>
+                  <SelectItem value="max">Max (₹4,999/mo)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1621,6 +1635,14 @@ export default function UsersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Subscription Details Dialog */}
+      <SubscriptionDetailsDialog
+        open={subscriptionDialog.open}
+        onClose={() => setSubscriptionDialog({ open: false, userId: "", userEmail: "" })}
+        userId={subscriptionDialog.userId}
+        userEmail={subscriptionDialog.userEmail}
+      />
     </div>
   );
 }
