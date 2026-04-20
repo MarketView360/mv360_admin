@@ -27,6 +27,7 @@ interface UserProfile {
   subscription_tier: string | null;
   role: string | null;
   billing_customer_id: string | null;
+  razorpay_customer_id: string | null;
   newsletter_opt_in: boolean;
   announcements_opt_in: boolean;
   alerts_opt_in: boolean;
@@ -40,6 +41,18 @@ interface UserProfile {
     desktop_notifications?: boolean;
     email_notifications?: boolean;
   } | null;
+  // Onboarding & profile fields
+  professional_role: string | null;
+  experience_level: string | null;
+  investment_style: string[] | null;
+  primary_goal: string[] | null;
+  interests: string[] | null;
+  usage_frequency: string | null;
+  referral_source: string | null;
+  referral_source_other: string | null;
+  timezone: string | null;
+  onboarded_at: string | null;
+  onboarding_skipped: boolean | null;
   screenCount: number;
   watchlistCount: number;
   lastActivity: string | null;
@@ -145,6 +158,13 @@ export default function UsersPage() {
   const [paymentFilter, setPaymentFilter] = useState<string>("all");
   const [activityFilter, setActivityFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  // Extended filters
+  const [professionalRoleFilter, setProfessionalRoleFilter] = useState<string>("all");
+  const [experienceFilter, setExperienceFilter] = useState<string>("all");
+  const [onboardingFilter, setOnboardingFilter] = useState<string>("all");
+  const [referralFilter, setReferralFilter] = useState<string>("all");
+  const [timezoneFilter, setTimezoneFilter] = useState<string>("all");
+  const [showExtendedFilters, setShowExtendedFilters] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem("users-color-theme") as ColorTheme;
@@ -172,7 +192,7 @@ export default function UsersPage() {
   useEffect(() => {
     applyFiltersAndSort(users);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, regexMode, tierFilter, paymentFilter, activityFilter, statusFilter, sortField, sortDirection, users]);
+  }, [searchQuery, regexMode, tierFilter, paymentFilter, activityFilter, statusFilter, professionalRoleFilter, experienceFilter, onboardingFilter, referralFilter, timezoneFilter, sortField, sortDirection, users]);
 
   const applyFiltersAndSort = (data: UserProfile[]) => {
     let filtered = [...data];
@@ -235,6 +255,35 @@ export default function UsersPage() {
       filtered = filtered.filter(u => u.temp_suspend);
     } else if (statusFilter === "perm-suspended") {
       filtered = filtered.filter(u => u.perm_suspend);
+    }
+
+    // Professional role filter
+    if (professionalRoleFilter !== "all") {
+      filtered = filtered.filter(u => u.professional_role === professionalRoleFilter);
+    }
+
+    // Experience level filter
+    if (experienceFilter !== "all") {
+      filtered = filtered.filter(u => u.experience_level === experienceFilter);
+    }
+
+    // Onboarding filter
+    if (onboardingFilter === "completed") {
+      filtered = filtered.filter(u => u.onboarded_at !== null);
+    } else if (onboardingFilter === "pending") {
+      filtered = filtered.filter(u => u.onboarded_at === null && !u.onboarding_skipped);
+    } else if (onboardingFilter === "skipped") {
+      filtered = filtered.filter(u => u.onboarding_skipped);
+    }
+
+    // Referral source filter
+    if (referralFilter !== "all") {
+      filtered = filtered.filter(u => u.referral_source === referralFilter);
+    }
+
+    // Timezone filter
+    if (timezoneFilter !== "all") {
+      filtered = filtered.filter(u => u.timezone === timezoneFilter);
     }
 
     // Sort
@@ -863,6 +912,92 @@ export default function UsersPage() {
                 </Select>
               </div>
             </div>
+
+            {/* Extended Filters */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowExtendedFilters(!showExtendedFilters)}
+              className="w-full justify-between mt-2"
+            >
+              <span className="font-semibold">Extended Filters</span>
+              {showExtendedFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+            {showExtendedFilters && (
+              <div className="grid gap-3 md:grid-cols-5 mt-3 p-3 bg-muted/30 rounded-md">
+                <div>
+                  <Label className="text-xs">Professional Role</Label>
+                  <Select value={professionalRoleFilter} onValueChange={setProfessionalRoleFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Roles</SelectItem>
+                      {[...new Set(users.filter(u => u.professional_role).map(u => u.professional_role))].sort().map(role => (
+                        <SelectItem key={role} value={role!}>{role}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Experience Level</Label>
+                  <Select value={experienceFilter} onValueChange={setExperienceFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Levels</SelectItem>
+                      <SelectItem value="beginner">Beginner</SelectItem>
+                      <SelectItem value="intermediate">Intermediate</SelectItem>
+                      <SelectItem value="advanced">Advanced</SelectItem>
+                      <SelectItem value="expert">Expert</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Onboarding Status</Label>
+                  <Select value={onboardingFilter} onValueChange={setOnboardingFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="skipped">Skipped</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Referral Source</Label>
+                  <Select value={referralFilter} onValueChange={setReferralFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Sources</SelectItem>
+                      {[...new Set(users.filter(u => u.referral_source).map(u => u.referral_source))].sort().map(source => (
+                        <SelectItem key={source} value={source!}>{source}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs">Timezone</Label>
+                  <Select value={timezoneFilter} onValueChange={setTimezoneFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Timezones</SelectItem>
+                      {[...new Set(users.filter(u => u.timezone).map(u => u.timezone))].sort().map(tz => (
+                        <SelectItem key={tz} value={tz!}>{tz}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent>

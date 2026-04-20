@@ -195,6 +195,7 @@ export async function fetchUsers() {
       updated_at: u.updated_at,
       onboarded_at: u.onboarded_at,
       billing_customer_id: u.billing_customer_id,
+      razorpay_customer_id: u.razorpay_customer_id,
       newsletter_opt_in: u.newsletter_opt_in ?? false,
       announcements_opt_in: u.announcements_opt_in ?? false,
       alerts_opt_in: u.alerts_opt_in ?? false,
@@ -204,6 +205,17 @@ export async function fetchUsers() {
       metadata: u.metadata,
       preferences: u.preferences,
       settings: null,
+      // Extended profile fields
+      professional_role: u.professional_role,
+      experience_level: u.experience_level,
+      investment_style: u.investment_style,
+      primary_goal: u.primary_goal,
+      interests: u.interests,
+      usage_frequency: u.usage_frequency,
+      referral_source: u.referral_source,
+      referral_source_other: u.referral_source_other,
+      timezone: u.timezone,
+      onboarding_skipped: u.onboarding_skipped,
       screenCount: Number(u.screen_count) ?? 0,
       watchlistCount: Number(u.watchlist_count) ?? 0,
       lastActivity: u.last_activity,
@@ -214,7 +226,7 @@ export async function fetchUsers() {
   const [profiles, savedScreens, watchlistsRes] = await Promise.all([
     supabase
       .from("user_profiles")
-      .select("id, email, display_name, full_name, subscription_tier, role, created_at, updated_at, onboarded_at, billing_customer_id, newsletter_opt_in, announcements_opt_in, alerts_opt_in, events_and_promotions_opt_in, temp_suspend, perm_suspend, metadata, preferences")
+      .select("id, email, display_name, full_name, subscription_tier, role, created_at, updated_at, onboarded_at, billing_customer_id, razorpay_customer_id, newsletter_opt_in, announcements_opt_in, alerts_opt_in, events_and_promotions_opt_in, temp_suspend, perm_suspend, metadata, preferences, professional_role, experience_level, investment_style, primary_goal, interests, usage_frequency, referral_source, referral_source_other, timezone, onboarding_skipped")
       .order("created_at", { ascending: false }),
     supabase
       .from("user_saved_screens")
