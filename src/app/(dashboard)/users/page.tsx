@@ -58,10 +58,29 @@ interface UserProfile {
   screenCount: number;
   watchlistCount: number;
   lastActivity: string | null;
+  // Subscription billing info (from subscriptions table)
+  billing_period?: "monthly" | "annual" | null;
+  subscription_status?: string | null;
 }
 
-const TIER_PRICES_INR = { free: 0, premium: 999, max: 4999 }; // INR monthly prices
-const TIER_PRICES_USD = { free: 0, premium: 9.90, max: 49.99 }; // USD equivalent for display
+// USD is primary pricing, INR is converted display
+const TIER_PRICES_USD = {
+  free: 0,
+  premium_monthly: 9.90,
+  premium_annual: 99.00,
+  max_monthly: 49.99,
+  max_annual: 499.99
+};
+const TIER_PRICES_INR = {
+  free: 0,
+  premium_monthly: 999,
+  premium_annual: 9900,
+  max_monthly: 4999,
+  max_annual: 49990
+};
+// Annual gives ~17% discount (12 × monthly = annual × 1.17)
+const ANNUAL_DISCOUNT = 0.17;
+
 const TIER_COLORS = { free: "#94a3b8", premium: "#3b82f6", max: "#8b5cf6" };
 
 type SortField = "name" | "email" | "tier" | "created" | "lastActivity" | "payment";
@@ -202,6 +221,31 @@ export default function UsersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery, regexMode, tierFilter, paymentFilter, activityFilter, statusFilter, professionalRoleFilter, experienceFilter, onboardingFilter, referralFilter, timezoneFilter, sortField, sortDirection, users]);
 
+  // Pricing helper functions - USD primary, INR secondary
+  const getUserPriceUSD = (user: UserProfile): number => {
+    if (!user.subscription_tier || user.subscription_tier === "free") return 0;
+    const period = user.billing_period || "monthly";
+    if (user.subscription_tier === "premium") {
+      return period === "annual" ? TIER_PRICES_USD.premium_annual : TIER_PRICES_USD.premium_monthly;
+    }
+    if (user.subscription_tier === "max") {
+      return period === "annual" ? TIER_PRICES_USD.max_annual : TIER_PRICES_USD.max_monthly;
+    }
+    return 0;
+  };
+
+  const getUserPriceINR = (user: UserProfile): number => {
+    if (!user.subscription_tier || user.subscription_tier === "free") return 0;
+    const period = user.billing_period || "monthly";
+    if (user.subscription_tier === "premium") {
+      return period === "annual" ? TIER_PRICES_INR.premium_annual : TIER_PRICES_INR.premium_monthly;
+    }
+    if (user.subscription_tier === "max") {
+      return period === "annual" ? TIER_PRICES_INR.max_annual : TIER_PRICES_INR.max_monthly;
+    }
+    return 0;
+  };
+
   const applyFiltersAndSort = (data: UserProfile[]) => {
     let filtered = [...data];
     
@@ -317,8 +361,8 @@ export default function UsersPage() {
           comparison = aTime - bTime;
           break;
         case "payment":
-          const aPrice = TIER_PRICES_INR[a.subscription_tier as keyof typeof TIER_PRICES_INR] || 0;
-          const bPrice = TIER_PRICES_INR[b.subscription_tier as keyof typeof TIER_PRICES_INR] || 0;
+          const aPrice = getUserPriceUSD(a);
+          const bPrice = getUserPriceUSD(b);
           comparison = aPrice - bPrice;
           break;
       }
@@ -675,7 +719,19 @@ export default function UsersPage() {
           <CardContent>
             <div className="text-2xl font-bold">{tierStats.premium + tierStats.max}</div>
             <p className="text-xs text-muted-foreground">
-              ₹{((tierStats.premium * TIER_PRICES_INR.premium) + (tierStats.max * TIER_PRICES_INR.max)).toLocaleString('en-IN')}/mo MRR
+              ${users.filter(u => u.subscription_tier && u.subscription_tier !== "free")
+                .reduce((sum, u) => {
+                  const usd = getUserPriceUSD(u);
+                  // For annual, divide by 12 to get monthly equivalent
+                  return sum + (u.billing_period === "annual" ? usd / 12 : usd);
+                }, 0).toFixed(2)}/mo MRR
+              <span className="ml-1 text-muted-foreground/70">
+                (₹{users.filter(u => u.subscription_tier && u.subscription_tier !== "free")
+                  .reduce((sum, u) => {
+                    const inr = getUserPriceINR(u);
+                    return sum + (u.billing_period === "annual" ? inr / 12 : inr);
+                  }, 0).toLocaleString('en-IN')})
+              </span>
             </p>
           </CardContent>
         </Card>
@@ -914,9 +970,15 @@ export default function UsersPage() {
                       {!compactView && (
                         <TableCell>
                           {(user.subscription_tier && user.subscription_tier !== "free") ? (
-                            <span className="text-sm font-medium">
-                              ₹{TIER_PRICES_INR[user.subscription_tier as keyof typeof TIER_PRICES_INR]}/mo
-                            </span>
+                            <div className="text-sm">
+                              <span className="font-medium">${getUserPriceUSD(user).toFixed(2)}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {user.billing_period === "annual" ? "/yr" : "/mo"}
+                              </span>
+                              <div className="text-xs text-muted-foreground">
+                                ₹{getUserPriceINR(user).toLocaleString('en-IN')}
+                              </div>
+                            </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">-</span>
                           )}
@@ -993,18 +1055,31 @@ export default function UsersPage() {
                             {(user.subscription_tier && user.subscription_tier !== "free") && (
                               <div className="border-t pt-3">
                                 <div className="font-semibold text-sm mb-2">Subscription Info</div>
-                                <div className="grid grid-cols-3 gap-3 text-sm">
+                                <div className="grid grid-cols-4 gap-3 text-sm">
                                   <div>
-                                    <span className="text-muted-foreground">Duration: </span>
-                                    {getSubscriptionDuration(user.created_at, user.subscription_tier)}
+                                    <span className="text-muted-foreground">Billing: </span>
+                                    <span className="capitalize font-medium">{user.billing_period || "monthly"}</span>
+                                    {user.billing_period === "annual" && (
+                                      <span className="ml-1 text-xs text-green-600">(17% off)</span>
+                                    )}
                                   </div>
                                   <div>
-                                    <span className="text-muted-foreground">Monthly: </span>
-                                    ₹{TIER_PRICES_INR[user.subscription_tier as keyof typeof TIER_PRICES_INR]}/mo
+                                    <span className="text-muted-foreground">Price: </span>
+                                    <span className="font-medium">${getUserPriceUSD(user).toFixed(2)}</span>
+                                    {user.billing_period === "annual" ? "/yr" : "/mo"}
+                                  </div>
+                                  <div>
+                                    <span className="text-muted-foreground">INR: </span>
+                                    ₹{getUserPriceINR(user).toLocaleString('en-IN')}
                                   </div>
                                   <div>
                                     <span className="text-muted-foreground">Tier: </span>
                                     {user.subscription_tier.toUpperCase()}
+                                    {user.subscription_status && (
+                                      <span className="ml-1 text-xs text-muted-foreground capitalize">
+                                        ({user.subscription_status})
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                                 <Button

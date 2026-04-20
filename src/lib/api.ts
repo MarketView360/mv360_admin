@@ -219,6 +219,9 @@ export async function fetchUsers() {
       screenCount: Number(u.screen_count) ?? 0,
       watchlistCount: Number(u.watchlist_count) ?? 0,
       lastActivity: u.last_activity,
+      // Subscription billing info
+      billing_period: u.billing_period,
+      subscription_status: u.subscription_status,
     }));
   }
 
