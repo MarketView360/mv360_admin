@@ -1194,7 +1194,6 @@ export interface BlogPost {
   id: number;
   created_at: string;
   updated_at: string | null;
-  deleted_at: string | null;
   title: string;
   description: string;
   date: string;
@@ -1204,6 +1203,8 @@ export interface BlogPost {
   is_featured: boolean;
   published: boolean;
   status: string;
+  thumbnail: string | null;
+  deleted_at: string | null;
 }
 
 export interface Announcement {
@@ -1283,6 +1284,42 @@ export async function restoreBlogPost(id: number) {
 export async function deleteBlogPostPermanently(id: number) {
   const { error } = await supabase.schema("admin").from("blog").delete().eq("id", id);
   if (error) throw error;
+}
+
+// ─── Blog Image Upload ────────────────────────────────────────────────────────
+
+export async function uploadBlogThumbnail(file: File): Promise<string> {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+  const filePath = `blog-thumbnails/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('admin-content')
+    .upload(filePath, file, {
+      cacheControl: '3600',
+      upsert: false
+    });
+
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage
+    .from('admin-content')
+    .getPublicUrl(filePath);
+
+  return data.publicUrl;
+}
+
+export async function deleteBlogThumbnail(url: string): Promise<void> {
+  // Extract file path from URL
+  const urlParts = url.split('/admin-content/');
+  if (urlParts.length < 2) return;
+  
+  const filePath = urlParts[1];
+  const { error } = await supabase.storage
+    .from('admin-content')
+    .remove([filePath]);
+
+  if (error) console.error('Failed to delete thumbnail:', error);
 }
 
 export async function fetchAnnouncements(includeTrash = false) {

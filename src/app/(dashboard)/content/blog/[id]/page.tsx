@@ -11,8 +11,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Save, Smile, Eye } from "lucide-react";
-import { fetchBlogPosts, createBlogPost, updateBlogPost, type BlogPost } from "@/lib/api";
+import { ArrowLeft, Save, Smile, Eye, Upload, X, Link2, Image as ImageIcon } from "lucide-react";
+import { fetchBlogPosts, createBlogPost, updateBlogPost, uploadBlogThumbnail, type BlogPost } from "@/lib/api";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const MDEditor = dynamic(() => import("@uiw/react-md-editor"), { ssr: false });
 
@@ -26,6 +27,8 @@ export default function BlogEditorPage() {
   const [saving, setSaving] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [thumbnailUrl, setThumbnailUrl] = useState("");
 
   const [form, setForm] = useState({
     title: "",
@@ -37,6 +40,7 @@ export default function BlogEditorPage() {
     is_featured: false,
     published: false,
     status: "draft",
+    thumbnail: null as string | null,
   });
 
   useEffect(() => {
@@ -60,7 +64,9 @@ export default function BlogEditorPage() {
           is_featured: post.is_featured,
           published: post.published,
           status: post.status,
+          thumbnail: post.thumbnail,
         });
+        if (post.thumbnail) setThumbnailUrl(post.thumbnail);
       }
     } catch (err) {
       console.error("Failed to load post:", err);
@@ -94,6 +100,51 @@ export default function BlogEditorPage() {
   const handleEmojiSelect = (emojiData: { emoji: string }) => {
     setForm(prev => ({ ...prev, title: prev.title + emojiData.emoji }));
     setShowEmojiPicker(false);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setAutoSaveStatus('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setAutoSaveStatus('File size must be less than 5MB');
+      return;
+    }
+
+    setUploading(true);
+    setAutoSaveStatus('Uploading image...');
+    try {
+      const url = await uploadBlogThumbnail(file);
+      setForm(prev => ({ ...prev, thumbnail: url }));
+      setThumbnailUrl(url);
+      setAutoSaveStatus('Image uploaded ✓');
+      setTimeout(() => setAutoSaveStatus(''), 2000);
+    } catch (err) {
+      console.error('Upload failed:', err);
+      setAutoSaveStatus('Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleUrlSubmit = () => {
+    if (thumbnailUrl && thumbnailUrl.startsWith('http')) {
+      setForm(prev => ({ ...prev, thumbnail: thumbnailUrl }));
+      setAutoSaveStatus('Thumbnail URL set ✓');
+      setTimeout(() => setAutoSaveStatus(''), 2000);
+    }
+  };
+
+  const handleRemoveThumbnail = () => {
+    setForm(prev => ({ ...prev, thumbnail: null }));
+    setThumbnailUrl('');
   };
 
   if (loading) {
@@ -230,6 +281,87 @@ export default function BlogEditorPage() {
                   <Label>Published</Label>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Thumbnail Image</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {form.thumbnail ? (
+                <div className="space-y-3">
+                  <div className="relative w-full aspect-video rounded-lg overflow-hidden border">
+                    <img src={form.thumbnail} alt="Thumbnail" className="w-full h-full object-cover" />
+                    <Button
+                      variant="destructive"
+                      size="icon"
+                      className="absolute top-2 right-2"
+                      onClick={handleRemoveThumbnail}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground truncate">{form.thumbnail}</p>
+                </div>
+              ) : (
+                <Tabs defaultValue="upload" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="upload">
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload File
+                    </TabsTrigger>
+                    <TabsTrigger value="url">
+                      <Link2 className="h-4 w-4 mr-2" />
+                      URL
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="upload" className="space-y-3">
+                    <div className="border-2 border-dashed rounded-lg p-8 text-center hover:border-primary transition-colors">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileUpload}
+                        disabled={uploading}
+                        className="hidden"
+                        id="thumbnail-upload"
+                      />
+                      <label
+                        htmlFor="thumbnail-upload"
+                        className="cursor-pointer flex flex-col items-center gap-2"
+                      >
+                        <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                        <div>
+                          <p className="text-sm font-medium">
+                            {uploading ? 'Uploading...' : 'Click to upload or drag and drop'}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            PNG, JPG, GIF up to 5MB
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="url" className="space-y-3">
+                    <div className="space-y-2">
+                      <Label>Image URL</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="https://example.com/image.jpg"
+                          value={thumbnailUrl}
+                          onChange={(e) => setThumbnailUrl(e.target.value)}
+                        />
+                        <Button onClick={handleUrlSubmit} disabled={!thumbnailUrl}>
+                          Set
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Enter a direct link to an image hosted elsewhere
+                      </p>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              )}
             </CardContent>
           </Card>
 
