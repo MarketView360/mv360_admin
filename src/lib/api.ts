@@ -278,6 +278,17 @@ export async function updateUserProfile(userId: string, updates: {
   subscription_tier?: string;
   role?: string;
   full_name?: string;
+  display_name?: string;
+  email?: string;
+  billing_customer_id?: string;
+  professional_role?: string;
+  experience_level?: string;
+  usage_frequency?: string;
+  referral_source?: string;
+  timezone?: string;
+  investment_style?: string[];
+  primary_goal?: string[];
+  interests?: string[];
   newsletter_opt_in?: boolean;
   announcements_opt_in?: boolean;
   alerts_opt_in?: boolean;

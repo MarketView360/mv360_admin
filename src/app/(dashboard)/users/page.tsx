@@ -15,6 +15,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp, Trash2, UserPlus, Loader2, Shield, ShieldOff, CreditCard } from "lucide-react";
 import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend, deleteUserAccount, inviteUser, InviteUserResult, resetUserMfa } from "@/lib/api";
 import { SubscriptionDetailsDialog } from "@/components/subscription-details-dialog";
+import { AdvancedSearchEngine } from "@/components/advanced-search-engine";
+import { UserDetailsDialog } from "@/components/user-details-dialog";
 import { ResponsiveContainer, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, LineChart, Line } from "recharts";
 
 interface UserProfile {
@@ -152,6 +154,12 @@ export default function UsersPage() {
 
   // Subscription details dialog state
   const [subscriptionDialog, setSubscriptionDialog] = useState<{ open: boolean; userId: string; userEmail: string }>({ open: false, userId: "", userEmail: "" });
+
+  // User details dialog state (comprehensive view/edit)
+  const [userDetailsDialog, setUserDetailsDialog] = useState<{ open: boolean; user: UserProfile | null }>({ open: false, user: null });
+
+  // Advanced search state
+  const [advancedFilteredUsers, setAdvancedFilteredUsers] = useState<UserProfile[]>([]);
 
   // Advanced filters
   const [tierFilter, setTierFilter] = useState<string>("all");
@@ -830,180 +838,22 @@ export default function UsersPage() {
         </Card>
       </div>
 
+      {/* Advanced Search Engine */}
+      <AdvancedSearchEngine
+        users={users}
+        onFilterChange={(filtered) => setAdvancedFilteredUsers(filtered as UserProfile[])}
+      />
+
       <Card>
         <CardHeader>
-          <CardTitle>Advanced Search & Filters</CardTitle>
-          <CardDescription>Regex search and multi-dimensional filtering</CardDescription>
-          <div className="space-y-4 mt-4">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={regexMode ? "Regex pattern (e.g., ^Har.*)" : "Search users..."}
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Button
-                variant={regexMode ? "default" : "outline"}
-                onClick={() => setRegexMode(!regexMode)}
-              >
-                {regexMode ? "Regex ON" : "Regex OFF"}
-              </Button>
-            </div>
-            {regexError && <p className="text-xs text-red-500">{regexError}</p>}
-            
-            <div className="grid gap-3 md:grid-cols-4">
-              <div>
-                <Label className="text-xs">Subscription Tier</Label>
-                <Select value={tierFilter} onValueChange={setTierFilter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Tiers</SelectItem>
-                    <SelectItem value="free">Free</SelectItem>
-                    <SelectItem value="premium">Premium</SelectItem>
-                    <SelectItem value="max">Max</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Payment Status</Label>
-                <Select value={paymentFilter} onValueChange={setPaymentFilter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Payment Status</SelectItem>
-                    <SelectItem value="paying">Paying Users</SelectItem>
-                    <SelectItem value="free">Free Users</SelectItem>
-                    <SelectItem value="with-billing">With Billing ID</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Activity</Label>
-                <Select value={activityFilter} onValueChange={setActivityFilter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Activity</SelectItem>
-                    <SelectItem value="active">Active (30d)</SelectItem>
-                    <SelectItem value="inactive">Inactive (30d+)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Account Status</Label>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="active">Active</SelectItem>
-                    <SelectItem value="suspended">All Suspended</SelectItem>
-                    <SelectItem value="temp-suspended">Temp Suspended</SelectItem>
-                    <SelectItem value="perm-suspended">Perm Suspended</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Extended Filters */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowExtendedFilters(!showExtendedFilters)}
-              className="w-full justify-between mt-2"
-            >
-              <span className="font-semibold">Extended Filters</span>
-              {showExtendedFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
-            {showExtendedFilters && (
-              <div className="grid gap-3 md:grid-cols-5 mt-3 p-3 bg-muted/30 rounded-md">
-                <div>
-                  <Label className="text-xs">Professional Role</Label>
-                  <Select value={professionalRoleFilter} onValueChange={setProfessionalRoleFilter}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Roles</SelectItem>
-                      {[...new Set(users.filter(u => u.professional_role).map(u => u.professional_role))].sort().map(role => (
-                        <SelectItem key={role} value={role!}>{role}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs">Experience Level</Label>
-                  <Select value={experienceFilter} onValueChange={setExperienceFilter}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Levels</SelectItem>
-                      <SelectItem value="beginner">Beginner</SelectItem>
-                      <SelectItem value="intermediate">Intermediate</SelectItem>
-                      <SelectItem value="advanced">Advanced</SelectItem>
-                      <SelectItem value="expert">Expert</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs">Onboarding Status</Label>
-                  <Select value={onboardingFilter} onValueChange={setOnboardingFilter}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="skipped">Skipped</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs">Referral Source</Label>
-                  <Select value={referralFilter} onValueChange={setReferralFilter}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Sources</SelectItem>
-                      {[...new Set(users.filter(u => u.referral_source).map(u => u.referral_source))].sort().map(source => (
-                        <SelectItem key={source} value={source!}>{source}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label className="text-xs">Timezone</Label>
-                  <Select value={timezoneFilter} onValueChange={setTimezoneFilter}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Timezones</SelectItem>
-                      {[...new Set(users.filter(u => u.timezone).map(u => u.timezone))].sort().map(tz => (
-                        <SelectItem key={tz} value={tz!}>{tz}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
-          </div>
+          <CardTitle>User Directory</CardTitle>
+          <CardDescription>
+            {advancedFilteredUsers.length > 0 || searchQuery || tierFilter !== "all" || paymentFilter !== "all" || activityFilter !== "all" || statusFilter !== "all"
+              ? `Showing ${advancedFilteredUsers.length > 0 ? advancedFilteredUsers.length : filteredUsers.length} of ${users.length} users`
+              : `${users.length} total users`}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-sm text-muted-foreground mb-3">
-            Showing {filteredUsers.length} of {users.length} users
-          </div>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -1033,7 +883,7 @@ export default function UsersPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredUsers.map((user) => (
+                {(advancedFilteredUsers.length > 0 ? advancedFilteredUsers : filteredUsers).map((user) => (
                   <>
                     <TableRow key={user.id} className="hover:bg-muted/50">
                       <TableCell>
@@ -1082,7 +932,10 @@ export default function UsersPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
-                          <Button variant="ghost" size="sm" onClick={() => openEditDialog(user)}>
+                          <Button variant="ghost" size="sm" onClick={() => setUserDetailsDialog({ open: true, user })} title="Full Details">
+                            <Users className="h-3 w-3" />
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => openEditDialog(user)} title="Quick Edit">
                             <Edit className="h-3 w-3" />
                           </Button>
                         </div>
@@ -1777,6 +1630,14 @@ export default function UsersPage() {
         onClose={() => setSubscriptionDialog({ open: false, userId: "", userEmail: "" })}
         userId={subscriptionDialog.userId}
         userEmail={subscriptionDialog.userEmail}
+      />
+
+      {/* User Details Dialog - Comprehensive view/edit */}
+      <UserDetailsDialog
+        open={userDetailsDialog.open}
+        onClose={() => setUserDetailsDialog({ open: false, user: null })}
+        user={userDetailsDialog.user}
+        onUpdate={loadData}
       />
     </div>
   );
