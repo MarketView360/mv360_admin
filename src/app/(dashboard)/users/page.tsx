@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp, Trash2, UserPlus, Loader2, Shield, ShieldOff, CreditCard } from "lucide-react";
+import { Users, Search, Edit, RefreshCw, TrendingUp, Activity, ChevronDown, ChevronRight, DollarSign, Mail, UserX, Ban, Copy, Check, ArrowUpDown, ArrowUp, ArrowDown, ExternalLink, Palette, ChevronUp, Trash2, UserPlus, Loader2, Shield, ShieldOff, CreditCard, Settings, Columns } from "lucide-react";
 import { fetchUsers, updateUserProfile, toggleTempSuspend, togglePermSuspend, deleteUserAccount, inviteUser, InviteUserResult, resetUserMfa } from "@/lib/api";
 import { SubscriptionDetailsDialog } from "@/components/subscription-details-dialog";
 import { AdvancedSearchEngine } from "@/components/advanced-search-engine";
@@ -136,6 +138,8 @@ export default function UsersPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [colorTheme, setColorTheme] = useState<ColorTheme>("default");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<string[]>(["name", "email", "tier", "payment", "lastActivity", "created", "actions"]);
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
   
   const [editDialog, setEditDialog] = useState<{ open: boolean; user?: UserProfile }>({ open: false });
   const [confirmEditDialog, setConfirmEditDialog] = useState(false);
@@ -371,6 +375,40 @@ export default function UsersPage() {
 
     setFilteredUsers(filtered);
   };
+
+  // Apply sorting to both filteredUsers and advancedFilteredUsers
+  const sortedDisplayUsers = useMemo(() => {
+    const sourceArray = advancedFilteredUsers.length > 0 ? advancedFilteredUsers : filteredUsers;
+    return [...sourceArray].sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case "name":
+          comparison = (a.full_name || a.display_name || "").localeCompare(b.full_name || b.display_name || "");
+          break;
+        case "email":
+          comparison = (a.email || "").localeCompare(b.email || "");
+          break;
+        case "tier":
+          const tierOrder = { free: 0, premium: 1, max: 2 };
+          comparison = (tierOrder[a.subscription_tier as keyof typeof tierOrder] || 0) - (tierOrder[b.subscription_tier as keyof typeof tierOrder] || 0);
+          break;
+        case "created":
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+        case "lastActivity":
+          const aTime = a.lastActivity ? new Date(a.lastActivity).getTime() : 0;
+          const bTime = b.lastActivity ? new Date(b.lastActivity).getTime() : 0;
+          comparison = aTime - bTime;
+          break;
+        case "payment":
+          const aPrice = getUserPriceUSD(a);
+          const bPrice = getUserPriceUSD(b);
+          comparison = aPrice - bPrice;
+          break;
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+  }, [advancedFilteredUsers, filteredUsers, sortField, sortDirection]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -677,6 +715,44 @@ export default function UsersPage() {
             <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
+          <Popover open={showColumnSettings} onOpenChange={setShowColumnSettings}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Columns className="mr-2 h-4 w-4" />
+                Columns
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-48" align="end">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Visible Columns</Label>
+                {[
+                  { key: "name", label: "Name" },
+                  { key: "email", label: "Email" },
+                  { key: "tier", label: "Tier" },
+                  { key: "payment", label: "Payment" },
+                  { key: "lastActivity", label: "Last Activity" },
+                  { key: "created", label: "Joined" },
+                ].map((col) => (
+                  <div key={col.key} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`col-${col.key}`}
+                      checked={visibleColumns.includes(col.key)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setVisibleColumns([...visibleColumns, col.key]);
+                        } else {
+                          setVisibleColumns(visibleColumns.filter((c) => c !== col.key));
+                        }
+                      }}
+                    />
+                    <Label htmlFor={`col-${col.key}`} className="text-sm cursor-pointer">
+                      {col.label}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button variant="outline" asChild>
             <a href="https://app.brevo.com/contact/list" target="_blank" rel="noopener noreferrer">
               <ExternalLink className="mr-2 h-4 w-4" />
@@ -915,31 +991,41 @@ export default function UsersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10"></TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("name")}>
-                    <div className="flex items-center">Name <SortIcon field="name" /></div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("email")}>
-                    <div className="flex items-center">Email <SortIcon field="email" /></div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("tier")}>
-                    <div className="flex items-center">Tier <SortIcon field="tier" /></div>
-                  </TableHead>
-                  {!compactView && (
+                  {visibleColumns.includes("name") && (
+                    <TableHead className="cursor-pointer" onClick={() => handleSort("name")}>
+                      <div className="flex items-center">Name <SortIcon field="name" /></div>
+                    </TableHead>
+                  )}
+                  {visibleColumns.includes("email") && (
+                    <TableHead className="cursor-pointer" onClick={() => handleSort("email")}>
+                      <div className="flex items-center">Email <SortIcon field="email" /></div>
+                    </TableHead>
+                  )}
+                  {visibleColumns.includes("tier") && (
+                    <TableHead className="cursor-pointer" onClick={() => handleSort("tier")}>
+                      <div className="flex items-center">Tier <SortIcon field="tier" /></div>
+                    </TableHead>
+                  )}
+                  {visibleColumns.includes("payment") && !compactView && (
                     <TableHead className="cursor-pointer" onClick={() => handleSort("payment")}>
                       <div className="flex items-center">Payment <SortIcon field="payment" /></div>
                     </TableHead>
                   )}
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("lastActivity")}>
-                    <div className="flex items-center">Last Active <SortIcon field="lastActivity" /></div>
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort("created")}>
-                    <div className="flex items-center">Joined <SortIcon field="created" /></div>
-                  </TableHead>
+                  {visibleColumns.includes("lastActivity") && (
+                    <TableHead className="cursor-pointer" onClick={() => handleSort("lastActivity")}>
+                      <div className="flex items-center">Last Active <SortIcon field="lastActivity" /></div>
+                    </TableHead>
+                  )}
+                  {visibleColumns.includes("created") && (
+                    <TableHead className="cursor-pointer" onClick={() => handleSort("created")}>
+                      <div className="flex items-center">Joined <SortIcon field="created" /></div>
+                    </TableHead>
+                  )}
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {(advancedFilteredUsers.length > 0 ? advancedFilteredUsers : filteredUsers).map((user) => (
+                {sortedDisplayUsers.map((user) => (
                   <>
                     <TableRow key={user.id} className="hover:bg-muted/50">
                       <TableCell>
@@ -955,7 +1041,7 @@ export default function UsersPage() {
                         <div className="font-medium">{user.full_name || user.display_name || "Anonymous"}</div>
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm text-muted-foreground">{user.email}</div>
+                        <div className="text-sm text-muted-foreground">{user.email || "—"}</div>
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -980,7 +1066,7 @@ export default function UsersPage() {
                               </div>
                             </div>
                           ) : (
-                            <span className="text-xs text-muted-foreground">-</span>
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </TableCell>
                       )}

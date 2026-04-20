@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DollarSign, TrendingUp, Users, CreditCard, RefreshCw, Crown, Zap, Star } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { DollarSign, TrendingUp, Users, CreditCard, RefreshCw, Crown, Zap, Star, IndianRupee, Calendar } from "lucide-react";
 import { fetchRevenueData } from "@/lib/api";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts";
 
@@ -33,10 +34,31 @@ const TIER_COLORS = {
   max: "#8b5cf6",
 };
 
-const TIER_PRICES = {
+// Correct pricing - USD primary, INR secondary
+// Premium: $9.90/mo ($99/yr with 17% discount), ₹999/mo (₹9900/yr)
+// Max: $49.99/mo ($499.99/yr with 17% discount), ₹4999/mo (₹49990/yr)
+const TIER_PRICES_USD = {
   free: 0,
-  premium: 19.99,
-  max: 49.99,
+  premium_monthly: 9.90,
+  premium_annual: 99.00,
+  max_monthly: 49.99,
+  max_annual: 499.99,
+};
+
+const TIER_PRICES_INR = {
+  free: 0,
+  premium_monthly: 999,
+  premium_annual: 9900,
+  max_monthly: 4999,
+  max_annual: 49990,
+};
+
+const ANNUAL_DISCOUNT = 0.17; // 17% discount for annual plans
+
+// Exchange rate display helper
+const formatUSDWithINR = (usd: number, showINR: boolean = true) => {
+  const inr = Math.round(usd * 100); // Approximate conversion
+  return showINR ? `$${usd.toFixed(2)} (≈₹${inr.toLocaleString('en-IN')})` : `$${usd.toFixed(2)}`;
 };
 
 export default function RevenuePage() {
@@ -169,7 +191,10 @@ export default function RevenuePage() {
               <Star className="h-5 w-5 text-slate-400" />
               Free Tier
             </CardTitle>
-            <CardDescription>${TIER_PRICES.free}/month</CardDescription>
+            <CardDescription className="flex items-center gap-2">
+              <span>$0/month</span>
+              <Badge variant="outline" className="text-xs">₹0</Badge>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -197,7 +222,17 @@ export default function RevenuePage() {
               <Zap className="h-5 w-5 text-blue-500" />
               Premium Tier
             </CardTitle>
-            <CardDescription>${TIER_PRICES.premium}/month</CardDescription>
+            <CardDescription className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span>$9.90/month</span>
+                <Badge variant="outline" className="text-xs">₹999</Badge>
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Calendar className="h-3 w-3" />
+                <span>$99/year (17% off)</span>
+                <Badge variant="secondary" className="text-xs">₹9,900</Badge>
+              </div>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -211,8 +246,12 @@ export default function RevenuePage() {
                   <span className="font-semibold">{Math.round((data.premium / data.totalUsers) * 100)}%</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>Monthly revenue</span>
-                  <span className="font-semibold text-blue-600">${(data.premium * TIER_PRICES.premium).toFixed(2)}</span>
+                  <span>Monthly revenue (USD)</span>
+                  <span className="font-semibold text-blue-600">${(data.premium * TIER_PRICES_USD.premium_monthly).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Monthly revenue (INR)</span>
+                  <span className="font-semibold text-blue-600">₹{(data.premium * TIER_PRICES_INR.premium_monthly).toLocaleString('en-IN')}</span>
                 </div>
               </div>
             </div>
@@ -225,7 +264,17 @@ export default function RevenuePage() {
               <Crown className="h-5 w-5 text-purple-500" />
               Max Tier
             </CardTitle>
-            <CardDescription>${TIER_PRICES.max}/month</CardDescription>
+            <CardDescription className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span>$49.99/month</span>
+                <Badge variant="outline" className="text-xs">₹4,999</Badge>
+              </div>
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Calendar className="h-3 w-3" />
+                <span>$499.99/year (17% off)</span>
+                <Badge variant="secondary" className="text-xs">₹49,990</Badge>
+              </div>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -239,8 +288,12 @@ export default function RevenuePage() {
                   <span className="font-semibold">{Math.round((data.max / data.totalUsers) * 100)}%</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>Monthly revenue</span>
-                  <span className="font-semibold text-purple-600">${(data.max * TIER_PRICES.max).toFixed(2)}</span>
+                  <span>Monthly revenue (USD)</span>
+                  <span className="font-semibold text-purple-600">${(data.max * TIER_PRICES_USD.max_monthly).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Monthly revenue (INR)</span>
+                  <span className="font-semibold text-purple-600">₹{(data.max * TIER_PRICES_INR.max_monthly).toLocaleString('en-IN')}</span>
                 </div>
               </div>
             </div>
