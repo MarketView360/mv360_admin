@@ -171,9 +171,10 @@ export function SubscriptionDetailsDialog({
                       </div>
                       {details.current_period_end && (
                         <div className="text-xs mt-1">
-                          {getDaysRemaining(details.current_period_end) > 0
-                            ? `${getDaysRemaining(details.current_period_end)} days remaining`
-                            : "Period ended"}
+                          {(() => {
+                            const days = getDaysRemaining(details.current_period_end!);
+                            return days > 0 ? `${days} days remaining` : "Period ended";
+                          })()}
                         </div>
                       )}
                     </div>
